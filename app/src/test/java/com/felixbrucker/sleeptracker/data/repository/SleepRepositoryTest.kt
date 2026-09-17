@@ -90,6 +90,7 @@ class SleepRepositoryTest {
         assertTrue(result?.syncedToHealthConnect ?: false)
         assertEquals(1, fakeDao.savedSessions.size)
         assertTrue(fakeDao.savedSessions.first().syncedToHealthConnect)
+        assertEquals(listOf("sleep_session_1"), fakeHealthConnect.insertedClientRecordIds)
     }
 
     @Test
@@ -132,7 +133,7 @@ class SleepRepositoryTest {
     }
 
     @Test
-    fun syncSessionToHealthConnect_whenSyncSucceeds_marksSessionAsSynced() = runTest {
+    fun syncSessionToHealthConnect_whenUnsyncedAndSyncSucceeds_insertsAndMarksSessionAsSynced() = runTest {
         val session = SleepSessionEntity(
             id = 1L,
             startTimeMillis = 1000L,
@@ -147,10 +148,32 @@ class SleepRepositoryTest {
 
         assertTrue(result)
         assertTrue(fakeDao.savedSessions.first().syncedToHealthConnect)
+        assertEquals(listOf("sleep_session_1"), fakeHealthConnect.insertedClientRecordIds)
+        assertTrue(fakeHealthConnect.updatedClientRecordIds.isEmpty())
     }
 
     @Test
-    fun syncSessionToHealthConnect_whenSyncFails_leavesSessionUnsynced() = runTest {
+    fun syncSessionToHealthConnect_whenAlreadySyncedAndSyncSucceeds_updatesAndMaintainsSynced() = runTest {
+        val session = SleepSessionEntity(
+            id = 1L,
+            startTimeMillis = 1000L,
+            endTimeMillis = 5000L,
+            durationMillis = 4000L,
+            syncedToHealthConnect = true
+        )
+        fakeDao.savedSessions.add(session)
+        fakeHealthConnect.updateResult = true
+
+        val result = repository.syncSessionToHealthConnect(session)
+
+        assertTrue(result)
+        assertTrue(fakeDao.savedSessions.first().syncedToHealthConnect)
+        assertEquals(listOf("sleep_session_1"), fakeHealthConnect.updatedClientRecordIds)
+        assertTrue(fakeHealthConnect.insertedClientRecordIds.isEmpty())
+    }
+
+    @Test
+    fun syncSessionToHealthConnect_whenUnsyncedAndSyncFails_leavesSessionUnsynced() = runTest {
         val session = SleepSessionEntity(
             id = 1L,
             startTimeMillis = 1000L,
@@ -168,6 +191,23 @@ class SleepRepositoryTest {
     }
 
     @Test
+    fun syncSessionToHealthConnect_whenAlreadySyncedAndSyncFails_returnsFalse() = runTest {
+        val session = SleepSessionEntity(
+            id = 1L,
+            startTimeMillis = 1000L,
+            endTimeMillis = 5000L,
+            durationMillis = 4000L,
+            syncedToHealthConnect = true
+        )
+        fakeDao.savedSessions.add(session)
+        fakeHealthConnect.updateResult = false
+
+        val result = repository.syncSessionToHealthConnect(session)
+
+        assertFalse(result)
+    }
+
+    @Test
     fun syncAllUnsyncedToHealthConnect_syncsAllPendingSessions() = runTest {
         val session1 = SleepSessionEntity(id = 1L, startTimeMillis = 1000L, endTimeMillis = 5000L, durationMillis = 4000L, syncedToHealthConnect = false)
         val session2 = SleepSessionEntity(id = 2L, startTimeMillis = 6000L, endTimeMillis = 9000L, durationMillis = 3000L, syncedToHealthConnect = false)
@@ -178,6 +218,7 @@ class SleepRepositoryTest {
 
         assertEquals(2, count)
         assertTrue(fakeDao.savedSessions.all { it.syncedToHealthConnect })
+        assertEquals(listOf("sleep_session_1", "sleep_session_2"), fakeHealthConnect.insertedClientRecordIds)
     }
 
     @Test
@@ -309,7 +350,7 @@ class SleepRepositoryTest {
         )
         fakeDao.savedSessions.add(original)
         fakePreferencesRepo.setAutoSyncHealthConnect(true)
-        fakeHealthConnect.insertResult = true
+        fakeHealthConnect.updateResult = true
         val newStart = 3000L
         val newEnd = 9000L
 
@@ -322,6 +363,8 @@ class SleepRepositoryTest {
         assertTrue(updated?.syncedToHealthConnect ?: false)
         val saved = fakeDao.savedSessions.first { it.id == 10L }
         assertTrue(saved.syncedToHealthConnect)
+        assertEquals(listOf("sleep_session_10"), fakeHealthConnect.updatedClientRecordIds)
+        assertTrue(fakeHealthConnect.insertedClientRecordIds.isEmpty())
     }
 
     @Test
@@ -335,7 +378,7 @@ class SleepRepositoryTest {
         )
         fakeDao.savedSessions.add(original)
         fakePreferencesRepo.setAutoSyncHealthConnect(true)
-        fakeHealthConnect.insertResult = false
+        fakeHealthConnect.updateResult = false
         val newStart = 3000L
         val newEnd = 9000L
 
@@ -345,6 +388,15 @@ class SleepRepositoryTest {
         assertFalse(updated?.syncedToHealthConnect ?: true)
         val saved = fakeDao.savedSessions.first { it.id == 10L }
         assertFalse(saved.syncedToHealthConnect)
+    }
+
+    @Test
+    fun clientRecordId_returnsFormattedStringWithSessionId() {
+        val sessionId = 123L
+
+        val recordId = SleepRepository.clientRecordId(sessionId)
+
+        assertEquals("sleep_session_123", recordId)
     }
 
     private class FakeSleepSessionDao : SleepSessionDao {
@@ -425,14 +477,31 @@ class SleepRepositoryTest {
 
     private class FakeHealthConnectDataSource : HealthConnectDataSource {
         var insertResult = true
+        var updateResult = true
+        val insertedClientRecordIds = mutableListOf<String>()
+        val updatedClientRecordIds = mutableListOf<String>()
         override val isAvailable: Boolean = true
 
         override suspend fun hasAllPermissions(): Boolean = true
 
         override suspend fun insertSleepSession(
+            clientRecordId: String,
             startTimeMillis: Long,
             endTimeMillis: Long,
             notes: String
-        ): Boolean = insertResult
+        ): Boolean {
+            insertedClientRecordIds.add(clientRecordId)
+            return insertResult
+        }
+
+        override suspend fun updateSleepSession(
+            clientRecordId: String,
+            startTimeMillis: Long,
+            endTimeMillis: Long,
+            notes: String
+        ): Boolean {
+            updatedClientRecordIds.add(clientRecordId)
+            return updateResult
+        }
     }
 }

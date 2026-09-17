@@ -53,6 +53,7 @@ class SleepRepository(
 
         if (currentPrefs.autoSyncHealthConnect) {
             val synced = healthConnectManager.insertSleepSession(
+                clientRecordId = clientRecordId(insertedId),
                 startTimeMillis = sleepStartTime,
                 endTimeMillis = endTimeMillis
             )
@@ -79,7 +80,8 @@ class SleepRepository(
 
         val currentPrefs = preferencesRepository.preferencesFlow.first()
         if (currentPrefs.autoSyncHealthConnect) {
-            val synced = healthConnectManager.insertSleepSession(
+            val synced = healthConnectManager.updateSleepSession(
+                clientRecordId = clientRecordId(id),
                 startTimeMillis = startTimeMillis,
                 endTimeMillis = effectiveEnd,
                 notes = updated.notes
@@ -110,11 +112,22 @@ class SleepRepository(
     }
 
     suspend fun syncSessionToHealthConnect(session: SleepSessionEntity): Boolean {
-        val success = healthConnectManager.insertSleepSession(
-            startTimeMillis = session.startTimeMillis,
-            endTimeMillis = session.endTimeMillis,
-            notes = session.notes
-        )
+        val clientRecordId = clientRecordId(session.id)
+        val success = if (session.syncedToHealthConnect) {
+            healthConnectManager.updateSleepSession(
+                clientRecordId = clientRecordId,
+                startTimeMillis = session.startTimeMillis,
+                endTimeMillis = session.endTimeMillis,
+                notes = session.notes
+            )
+        } else {
+            healthConnectManager.insertSleepSession(
+                clientRecordId = clientRecordId,
+                startTimeMillis = session.startTimeMillis,
+                endTimeMillis = session.endTimeMillis,
+                notes = session.notes
+            )
+        }
         if (success) {
             sleepSessionDao.markAsSynced(session.id)
         }
@@ -126,6 +139,7 @@ class SleepRepository(
         var successCount = 0
         for (session in unsynced) {
             val success = healthConnectManager.insertSleepSession(
+                clientRecordId = clientRecordId(session.id),
                 startTimeMillis = session.startTimeMillis,
                 endTimeMillis = session.endTimeMillis,
                 notes = session.notes
@@ -136,5 +150,9 @@ class SleepRepository(
             }
         }
         return successCount
+    }
+
+    companion object {
+        fun clientRecordId(id: Long): String = "sleep_session_$id"
     }
 }
