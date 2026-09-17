@@ -1,0 +1,6 @@
+{
+  "name": "Sleep Tracker",
+  "description": "Low power duration-based sleep tracker with scheduled bedtime reminders, notification tracking controls, Health Connect sync, and Room persistence.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
