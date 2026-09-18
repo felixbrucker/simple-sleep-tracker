@@ -5,7 +5,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.felixbrucker.sleeptracker.MainActivity
 import com.felixbrucker.sleeptracker.receiver.SleepActionReceiver
@@ -27,26 +26,24 @@ class SleepNotificationManager(private val context: Context) {
     }
 
     private fun createNotificationChannels() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val reminderChannel = NotificationChannel(
-                CHANNEL_ID_REMINDER,
-                "Bedtime Reminders",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Notifications prompting to start sleep tracking"
-            }
-
-            val trackingChannel = NotificationChannel(
-                CHANNEL_ID_TRACKING,
-                "Sleep Tracking Active",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Ongoing notification while sleep tracking is active"
-            }
-
-            notificationManager.createNotificationChannel(reminderChannel)
-            notificationManager.createNotificationChannel(trackingChannel)
+        val reminderChannel = NotificationChannel(
+            CHANNEL_ID_REMINDER,
+            "Bedtime Reminders",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "Notifications prompting to start sleep tracking"
         }
+
+        val trackingChannel = NotificationChannel(
+            CHANNEL_ID_TRACKING,
+            "Sleep Tracking Active",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "Ongoing notification while sleep tracking is active"
+        }
+
+        notificationManager.createNotificationChannel(reminderChannel)
+        notificationManager.createNotificationChannel(trackingChannel)
     }
 
     fun showSleepReminderNotification() {
@@ -83,7 +80,7 @@ class SleepNotificationManager(private val context: Context) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_REMINDER)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("Time for Bed")
-            .setContentText("Ready for sleep? Start tracking to monitor your rest.")
+            .setContentText("Ready for sleep? Start tracking your sleep duration now.")
             .setStyle(
                 NotificationCompat.BigTextStyle()
                     .bigText("It's your scheduled bedtime. Tap below to begin tracking your sleep duration.")

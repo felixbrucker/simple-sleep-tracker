@@ -1,4 +1,4 @@
-package com.felixbrucker.sleeptracker.ui
+package com.felixbrucker.sleeptracker.ui.viewmodel
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
@@ -8,7 +8,6 @@ import androidx.lifecycle.viewModelScope
 import com.felixbrucker.sleeptracker.data.database.AppDatabase
 import com.felixbrucker.sleeptracker.data.database.entity.SleepSessionEntity
 import com.felixbrucker.sleeptracker.data.healthconnect.HealthConnectManager
-import com.felixbrucker.sleeptracker.data.preferences.SleepPreferences
 import com.felixbrucker.sleeptracker.data.preferences.SleepPreferencesRepository
 import com.felixbrucker.sleeptracker.data.preferences.sleepDataStore
 import com.felixbrucker.sleeptracker.data.repository.SleepRepository
@@ -18,11 +17,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.seconds
 
 data class SleepTrackerUiState(
     val isTrackingActive: Boolean = false,
@@ -127,7 +126,7 @@ class SleepViewModel(
                 } else {
                     _liveDuration.value = 0L
                 }
-                delay(1000)
+                delay(1.seconds)
             }
         }
     }

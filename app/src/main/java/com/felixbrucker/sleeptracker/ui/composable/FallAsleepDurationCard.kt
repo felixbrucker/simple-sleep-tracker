@@ -1,4 +1,4 @@
-package com.felixbrucker.sleeptracker.ui
+package com.felixbrucker.sleeptracker.ui.composable
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement

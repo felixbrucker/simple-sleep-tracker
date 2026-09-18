@@ -1,21 +1,16 @@
-package com.felixbrucker.sleeptracker.ui
+package com.felixbrucker.sleeptracker.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,7 +23,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -37,18 +31,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.HourglassBottom
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Power
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.outlined.BatteryChargingFull
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.HealthAndSafety
 import androidx.compose.material3.AlertDialog
@@ -68,7 +59,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -85,19 +75,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.health.connect.client.PermissionController
 import com.felixbrucker.sleeptracker.data.database.entity.SleepSessionEntity
 import com.felixbrucker.sleeptracker.data.healthconnect.HealthConnectManager
+import com.felixbrucker.sleeptracker.ui.composable.EditSleepSessionDialog
+import com.felixbrucker.sleeptracker.ui.composable.FallAsleepDurationCard
+import com.felixbrucker.sleeptracker.ui.viewmodel.SleepTrackerUiState
 import com.felixbrucker.sleeptracker.util.formatTimeDisplay
-import com.felixbrucker.sleeptracker.util.padTwoDigits
 import com.felixbrucker.sleeptracker.util.toFormattedDate
 import com.felixbrucker.sleeptracker.util.toFormattedDuration
 import com.felixbrucker.sleeptracker.util.toFormattedTime
@@ -187,11 +177,6 @@ fun SleepTrackerScreen(
                                 text = "Sleep Tracker",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Duration & Sleep Rest",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }

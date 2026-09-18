@@ -1,4 +1,4 @@
-package com.felixbrucker.sleeptracker.ui
+package com.felixbrucker.sleeptracker.ui.composable
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable

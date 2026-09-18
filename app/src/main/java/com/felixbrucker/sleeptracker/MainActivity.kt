@@ -4,7 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -12,8 +11,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.felixbrucker.sleeptracker.ui.SleepTrackerScreen
-import com.felixbrucker.sleeptracker.ui.SleepViewModel
+import com.felixbrucker.sleeptracker.ui.screens.SleepTrackerScreen
+import com.felixbrucker.sleeptracker.ui.viewmodel.SleepViewModel
 import com.felixbrucker.sleeptracker.ui.theme.SleepTrackerTheme
 
 class MainActivity : ComponentActivity() {
