@@ -26,33 +26,34 @@ fun Long.toFormattedDuration(): String {
     }
 }
 
+// Thread-safe cached formatters to prevent repeated allocations in hot rendering paths.
+private val timeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
+private val dateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault())
+private val dateTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, HH:mm", Locale.getDefault())
+
 fun Long.toFormattedTime(zoneId: ZoneId = ZoneId.systemDefault()): String {
     if (this <= 0L) return "--:--"
     val instant = Instant.ofEpochMilli(this)
-    val formatter = DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
-    return instant.atZone(zoneId).format(formatter)
+    return instant.atZone(zoneId).format(timeFormatter)
 }
 
 fun Long.toFormattedDate(zoneId: ZoneId = ZoneId.systemDefault()): String {
     if (this <= 0L) return ""
     val instant = Instant.ofEpochMilli(this)
-    val formatter = DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault())
-    return instant.atZone(zoneId).format(formatter)
+    return instant.atZone(zoneId).format(dateFormatter)
 }
 
 fun Long.toFormattedDateTime(zoneId: ZoneId = ZoneId.systemDefault()): String {
     if (this <= 0L) return ""
     val instant = Instant.ofEpochMilli(this)
-    val formatter = DateTimeFormatter.ofPattern("MMM d, HH:mm", Locale.getDefault())
-    return instant.atZone(zoneId).format(formatter)
+    return instant.atZone(zoneId).format(dateTimeFormatter)
 }
 
 fun Int.padTwoDigits(): String = String.format(Locale.getDefault(), "%02d", this)
 
 fun formatTimeDisplay(hour: Int, minute: Int): String {
-    val formatter = DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
     val localDateTime = LocalDateTime.of(2026, 1, 1, hour, minute)
-    return localDateTime.format(formatter)
+    return localDateTime.format(timeFormatter)
 }
 
 fun calculateNextAlarmTime(
