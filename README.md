@@ -30,7 +30,7 @@ A modern, low-power Android application for tracking sleep duration, built with 
 To stay updated with the latest versions, we recommend using **[Obtainium](https://github.com/ImranR98/Obtainium)**.
 
 1. Install Obtainium on your Android device.
-2. Click **Add App**.
+2. Open Obtainium and tap **"Add App"**.
 3. Paste this repository's URL: `https://github.com/felixbrucker/simple-sleep-tracker`
 4. Obtainium will notify you and help you install updates automatically whenever a new build is available on GitHub.
 
@@ -56,3 +56,7 @@ You can find the latest APKs in the [Releases](https://github.com/felixbrucker/s
 # Generate coverage report
 ./gradlew koverHtmlReport
 ```
+
+## 📄 License
+
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
