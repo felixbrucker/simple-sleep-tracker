@@ -1,6 +1,7 @@
 package com.felixbrucker.sleeptracker.ui.viewmodel
 
 import android.app.Application
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -18,11 +19,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.seconds
 
+@Immutable
 data class SleepTrackerUiState(
     val isTrackingActive: Boolean = false,
     val trackingStartTimeMillis: Long = 0L,
@@ -43,6 +46,13 @@ data class SleepTrackerUiState(
     val statusMessage: String? = null
 )
 
+private data class SessionStats(
+    val sessions: List<SleepSessionEntity> = emptyList(),
+    val totalSessions: Int = 0,
+    val totalDurationMillis: Long = 0L,
+    val averageDurationMillis: Long = 0L
+)
+
 class SleepViewModel(
     application: Application,
     private val repository: SleepRepository,
@@ -57,17 +67,25 @@ class SleepViewModel(
         Pair(healthConnectManager.isAvailable, false)
     )
 
-    val uiState: StateFlow<SleepTrackerUiState> = combine(
-        repository.preferencesFlow,
-        repository.allSessions,
-        _liveDuration,
-        _healthConnectStatus,
-        _statusMessage
-    ) { prefs, sessions, duration, hcStatus, message ->
+    private val _sessionStats = repository.allSessions.map { sessions ->
         val totalSessions = sessions.size
         val totalDuration = sessions.sumOf { it.durationMillis }
         val avgDuration = if (totalSessions > 0) totalDuration / totalSessions else 0L
+        SessionStats(
+            sessions = sessions,
+            totalSessions = totalSessions,
+            totalDurationMillis = totalDuration,
+            averageDurationMillis = avgDuration
+        )
+    }
 
+    val uiState: StateFlow<SleepTrackerUiState> = combine(
+        repository.preferencesFlow,
+        _sessionStats,
+        _liveDuration,
+        _healthConnectStatus,
+        _statusMessage
+    ) { prefs, stats, duration, hcStatus, message ->
         val now = System.currentTimeMillis()
         val fallAsleepMillis = prefs.fallAsleepDurationMinutes * 60_000L
         val sleepStartTime = prefs.trackingStartTimeMillis + fallAsleepMillis
@@ -92,10 +110,10 @@ class SleepViewModel(
             autoSyncHealthConnect = prefs.autoSyncHealthConnect,
             healthConnectAvailable = hcStatus.first,
             healthConnectPermissionsGranted = hcStatus.second,
-            sessions = sessions,
-            totalSleepSessions = totalSessions,
-            totalSleepDurationMillis = totalDuration,
-            averageSleepDurationMillis = avgDuration,
+            sessions = stats.sessions,
+            totalSleepSessions = stats.totalSessions,
+            totalSleepDurationMillis = stats.totalDurationMillis,
+            averageSleepDurationMillis = stats.averageDurationMillis,
             statusMessage = message
         )
     }.stateIn(
