@@ -18,7 +18,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
@@ -129,23 +131,24 @@ class SleepViewModel(
         startLiveDurationTimer()
     }
 
+    // Ticker loop runs only when tracking is active to prevent idle 1s CPU wakeups
     private fun startLiveDurationTimer() {
         viewModelScope.launch {
-            while (isActive) {
-                val state = uiState.value
-                if (state.isTrackingActive && state.trackingStartTimeMillis > 0L) {
-                    val now = System.currentTimeMillis()
-                    val sleepStartTime = state.trackingStartTimeMillis + (state.fallAsleepDurationMinutes * 60_000L)
-                    if (now >= sleepStartTime) {
-                        _liveDuration.value = (now - sleepStartTime).coerceAtLeast(0L)
+            repository.preferencesFlow
+                .map { Triple(it.isTrackingActive, it.trackingStartTimeMillis, it.fallAsleepDurationMinutes) }
+                .distinctUntilChanged()
+                .collectLatest { (isTrackingActive, startTimeMillis, fallAsleepMinutes) ->
+                    if (isTrackingActive && startTimeMillis > 0L) {
+                        while (isActive) {
+                            val now = System.currentTimeMillis()
+                            val sleepStartTime = startTimeMillis + (fallAsleepMinutes * 60_000L)
+                            _liveDuration.value = if (now >= sleepStartTime) (now - sleepStartTime).coerceAtLeast(0L) else 0L
+                            delay(1.seconds)
+                        }
                     } else {
                         _liveDuration.value = 0L
                     }
-                } else {
-                    _liveDuration.value = 0L
                 }
-                delay(1.seconds)
-            }
         }
     }
 
