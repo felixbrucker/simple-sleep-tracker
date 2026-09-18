@@ -74,7 +74,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -394,7 +394,11 @@ private fun ActiveTrackingHeroCard(
             Box(
                 modifier = Modifier
                     .size(72.dp)
-                    .scale(if (isTracking) pulseScale else 1f)
+                    .graphicsLayer {
+                        val scale = if (isTracking) pulseScale else 1f
+                        scaleX = scale
+                        scaleY = scale
+                    }
                     .clip(CircleShape)
                     .background(
                         if (isTracking) MaterialTheme.colorScheme.primary
