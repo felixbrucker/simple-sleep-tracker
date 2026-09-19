@@ -220,28 +220,33 @@ fun SleepTrackerScreen(
 
             // 3. Bedtime Reminder Card (Configurable notification time)
             item {
+                val onReminderToggleLambda = remember(uiState.reminderHour, uiState.reminderMinute, onUpdateReminder) {
+                    { enabled: Boolean -> onUpdateReminder(enabled, uiState.reminderHour, uiState.reminderMinute) }
+                }
+                val onOpenTimePickerLambda = remember { { showTimePickerDialog = true } }
+
                 BedtimeReminderCard(
                     reminderEnabled = uiState.reminderEnabled,
                     reminderHour = uiState.reminderHour,
                     reminderMinute = uiState.reminderMinute,
-                    onReminderToggle = { enabled ->
-                        onUpdateReminder(enabled, uiState.reminderHour, uiState.reminderMinute)
-                    },
-                    onOpenTimePicker = { showTimePickerDialog = true },
+                    onReminderToggle = onReminderToggleLambda,
+                    onOpenTimePicker = onOpenTimePickerLambda,
                     onTestNotification = onTestReminder
                 )
             }
 
             // 4. Health Connect Integration Card
             item {
+                val onRequestPermissionsLambda = remember(healthConnectPermissionLauncher) {
+                    { healthConnectPermissionLauncher.launch(HealthConnectManager.REQUIRED_PERMISSIONS) }
+                }
+
                 HealthConnectSyncCard(
                     isAvailable = uiState.healthConnectAvailable,
                     isPermissionsGranted = uiState.healthConnectPermissionsGranted,
                     autoSync = uiState.autoSyncHealthConnect,
                     onAutoSyncChange = onSetAutoSync,
-                    onRequestPermissions = {
-                        healthConnectPermissionLauncher.launch(HealthConnectManager.REQUIRED_PERMISSIONS)
-                    },
+                    onRequestPermissions = onRequestPermissionsLambda,
                     onSyncAll = onSyncAll
                 )
             }
@@ -285,11 +290,16 @@ fun SleepTrackerScreen(
                     items = uiState.sessions,
                     key = { it.id }
                 ) { session ->
+                    // Remember callbacks per session item to allow Compose skipping during timer tick recompositions
+                    val onEditSession = remember(session) { { sessionToEdit = session } }
+                    val onSyncSessionItem = remember(session, onSyncSession) { { onSyncSession(session) } }
+                    val onDeleteSessionItem = remember(session) { { sessionToDelete = session } }
+
                     SleepSessionItem(
                         session = session,
-                        onEdit = { sessionToEdit = session },
-                        onSync = { onSyncSession(session) },
-                        onDelete = { sessionToDelete = session }
+                        onEdit = onEditSession,
+                        onSync = onSyncSessionItem,
+                        onDelete = onDeleteSessionItem
                     )
                 }
             }
