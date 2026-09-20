@@ -368,16 +368,21 @@ private fun ActiveTrackingHeroCard(
     onStop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.06f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseScale"
-    )
+    // Gate transition creation to avoid continuous VSYNC animation frame ticks when idle
+    val pulseScaleState = if (isTracking) {
+        val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+        infiniteTransition.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.06f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1200),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "pulseScale"
+        )
+    } else {
+        null
+    }
 
     Card(
         modifier = modifier
@@ -405,7 +410,8 @@ private fun ActiveTrackingHeroCard(
                 modifier = Modifier
                     .size(72.dp)
                     .graphicsLayer {
-                        val scale = if (isTracking) pulseScale else 1f
+                        // Defer animated state read to draw phase to avoid recomposition
+                        val scale = pulseScaleState?.value ?: 1f
                         scaleX = scale
                         scaleY = scale
                     }
