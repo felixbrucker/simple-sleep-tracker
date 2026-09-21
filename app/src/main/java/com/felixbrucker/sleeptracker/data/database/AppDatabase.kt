@@ -1,17 +1,19 @@
 package com.felixbrucker.sleeptracker.data.database
 
 import android.content.Context
+import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import androidx.room.migration.Migration
-import androidx.sqlite.db.SupportSQLiteDatabase
 import com.felixbrucker.sleeptracker.data.database.dao.SleepSessionDao
 import com.felixbrucker.sleeptracker.data.database.entity.SleepSessionEntity
 
 @Database(
     entities = [SleepSessionEntity::class],
     version = 2,
+    autoMigrations = [
+        AutoMigration(from = 1, to = 2)
+    ],
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -21,23 +23,13 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
-        val MIGRATION_1_2 = object : Migration(1, 2) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_sleep_sessions_startTimeMillis` ON `sleep_sessions` (`startTimeMillis`)")
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_sleep_sessions_syncedToHealthConnect` ON `sleep_sessions` (`syncedToHealthConnect`)")
-            }
-        }
-
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "sleep_tracker.db"
-                )
-                    .addMigrations(MIGRATION_1_2)
-                    .fallbackToDestructiveMigration(dropAllTables = true)
-                    .build()
+                ).build()
                 INSTANCE = instance
                 instance
             }
