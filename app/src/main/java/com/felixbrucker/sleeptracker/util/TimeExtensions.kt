@@ -1,7 +1,7 @@
 package com.felixbrucker.sleeptracker.util
 
 import java.time.Instant
-import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
@@ -49,11 +49,13 @@ fun Long.toFormattedDateTime(zoneId: ZoneId = ZoneId.systemDefault()): String {
     return instant.atZone(zoneId).format(dateTimeFormatter)
 }
 
-fun Int.padTwoDigits(): String = String.format(Locale.getDefault(), "%02d", this)
+// Fast conditional check avoids Formatter and String.format allocations in hot formatting calls.
+fun Int.padTwoDigits(): String = if (this in 0..9) "0$this" else this.toString()
 
+// Uses LocalTime directly to eliminate unnecessary LocalDate and LocalDateTime allocations.
 fun formatTimeDisplay(hour: Int, minute: Int): String {
-    val localDateTime = LocalDateTime.of(2026, 1, 1, hour, minute)
-    return localDateTime.format(timeFormatter)
+    val localTime = LocalTime.of(hour, minute)
+    return localTime.format(timeFormatter)
 }
 
 fun calculateNextAlarmTime(
