@@ -82,9 +82,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.health.connect.client.PermissionController
+import androidx.paging.PagingData
+import androidx.paging.compose.LazyPagingItems
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
 import com.felixbrucker.sleeptracker.data.database.entity.SleepSessionEntity
 import com.felixbrucker.sleeptracker.data.healthconnect.HealthConnectManager
 import com.felixbrucker.sleeptracker.ui.composable.EditSleepSessionDialog
+import kotlinx.coroutines.flow.Flow
 import com.felixbrucker.sleeptracker.ui.composable.FallAsleepDurationCard
 import com.felixbrucker.sleeptracker.ui.viewmodel.SleepTrackerUiState
 import com.felixbrucker.sleeptracker.util.formatTimeDisplay
@@ -96,6 +101,7 @@ import com.felixbrucker.sleeptracker.util.toFormattedTime
 @Composable
 fun SleepTrackerScreen(
     uiState: SleepTrackerUiState,
+    pagedSessions: Flow<PagingData<SleepSessionEntity>>,
     onStartTracking: () -> Unit,
     onStopTracking: () -> Unit,
     onUpdateReminder: (enabled: Boolean, hour: Int, minute: Int) -> Unit,
@@ -111,6 +117,7 @@ fun SleepTrackerScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val lazyPagingItems: LazyPagingItems<SleepSessionEntity> = pagedSessions.collectAsLazyPagingItems()
     val snackbarHostState = remember { SnackbarHostState() }
     var showTimePickerDialog by remember { mutableStateOf(false) }
     var sessionToDelete by remember { mutableStateOf<SleepSessionEntity?>(null) }
@@ -255,8 +262,8 @@ fun SleepTrackerScreen(
             item {
                 SleepStatsOverview(
                     totalSessions = uiState.totalSleepSessions,
-                    totalDurationMillis = uiState.totalSleepDurationMillis,
-                    averageDurationMillis = uiState.averageSleepDurationMillis
+                    weeklyAverageDurationMillis = uiState.averageWeeklyDurationMillis,
+                    monthlyAverageDurationMillis = uiState.averageMonthlyDurationMillis
                 )
             }
 
@@ -273,34 +280,36 @@ fun SleepTrackerScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "${uiState.sessions.size} recorded",
+                        text = "${uiState.totalSleepSessions} recorded",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
-            // 7. Sleep Sessions List
-            if (uiState.sessions.isEmpty()) {
+            // 7. Sleep Sessions List with Room Paging 3
+            if (lazyPagingItems.itemCount == 0) {
                 item {
                     EmptyHistoryCard()
                 }
             } else {
                 items(
-                    items = uiState.sessions,
-                    key = { it.id }
-                ) { session ->
-                    // Remember callbacks per session item to allow Compose skipping during timer tick recompositions
-                    val onEditSession = remember(session) { { sessionToEdit = session } }
-                    val onSyncSessionItem = remember(session, onSyncSession) { { onSyncSession(session) } }
-                    val onDeleteSessionItem = remember(session) { { sessionToDelete = session } }
+                    count = lazyPagingItems.itemCount,
+                    key = lazyPagingItems.itemKey { it.id }
+                ) { index ->
+                    val session = lazyPagingItems[index]
+                    if (session != null) {
+                        val onEditSession = remember(session) { { sessionToEdit = session } }
+                        val onSyncSessionItem = remember(session, onSyncSession) { { onSyncSession(session) } }
+                        val onDeleteSessionItem = remember(session) { { sessionToDelete = session } }
 
-                    SleepSessionItem(
-                        session = session,
-                        onEdit = onEditSession,
-                        onSync = onSyncSessionItem,
-                        onDelete = onDeleteSessionItem
-                    )
+                        SleepSessionItem(
+                            session = session,
+                            onEdit = onEditSession,
+                            onSync = onSyncSessionItem,
+                            onDelete = onDeleteSessionItem
+                        )
+                    }
                 }
             }
         }
@@ -852,8 +861,8 @@ private fun HealthConnectSyncCard(
 @Composable
 private fun SleepStatsOverview(
     totalSessions: Int,
-    totalDurationMillis: Long,
-    averageDurationMillis: Long,
+    weeklyAverageDurationMillis: Long,
+    monthlyAverageDurationMillis: Long,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -867,14 +876,14 @@ private fun SleepStatsOverview(
             modifier = Modifier.weight(1f)
         )
         StatBox(
-            title = "Total Time",
-            value = totalDurationMillis.toFormattedDuration(),
-            icon = Icons.Default.HourglassBottom,
+            title = "Avg / Week",
+            value = weeklyAverageDurationMillis.toFormattedDuration(),
+            icon = Icons.Default.Schedule,
             modifier = Modifier.weight(1f)
         )
         StatBox(
-            title = "Average",
-            value = averageDurationMillis.toFormattedDuration(),
+            title = "Avg / Month",
+            value = monthlyAverageDurationMillis.toFormattedDuration(),
             icon = Icons.Default.Schedule,
             modifier = Modifier.weight(1f)
         )

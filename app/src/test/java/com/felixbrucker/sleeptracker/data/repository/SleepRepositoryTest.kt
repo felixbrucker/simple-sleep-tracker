@@ -1,5 +1,7 @@
 package com.felixbrucker.sleeptracker.data.repository
 
+import androidx.paging.PagingSource
+import androidx.paging.PagingState
 import com.felixbrucker.sleeptracker.data.database.dao.SleepSessionDao
 import com.felixbrucker.sleeptracker.data.database.entity.SleepSessionEntity
 import com.felixbrucker.sleeptracker.data.healthconnect.HealthConnectDataSource
@@ -8,6 +10,7 @@ import com.felixbrucker.sleeptracker.data.preferences.SleepPreferencesDataSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -399,11 +402,44 @@ class SleepRepositoryTest {
         assertEquals("sleep_session_123", recordId)
     }
 
+    @Test
+    fun getAverageDurationSince_delegatesToDao() = runTest {
+        val session1 = SleepSessionEntity(id = 1L, startTimeMillis = 1000L, endTimeMillis = 5000L, durationMillis = 4000L)
+        val session2 = SleepSessionEntity(id = 2L, startTimeMillis = 2000L, endTimeMillis = 8000L, durationMillis = 6000L)
+        fakeDao.insertSession(session1)
+        fakeDao.insertSession(session2)
+
+        val avg = repository.getAverageDurationSince(500L).first()
+
+        assertEquals(5000L, avg)
+    }
+
     private class FakeSleepSessionDao : SleepSessionDao {
         val savedSessions = mutableListOf<SleepSessionEntity>()
         private val sessionsFlow = MutableStateFlow<List<SleepSessionEntity>>(emptyList())
 
         override fun getAllSessions(): Flow<List<SleepSessionEntity>> = sessionsFlow
+
+        override fun getAllSessionsPaginated(): PagingSource<Int, SleepSessionEntity> {
+            return object : PagingSource<Int, SleepSessionEntity>() {
+                override fun getRefreshKey(state: PagingState<Int, SleepSessionEntity>): Int? = null
+                override suspend fun load(params: LoadParams<Int>): LoadResult<Int, SleepSessionEntity> {
+                    val sorted = savedSessions.sortedByDescending { it.startTimeMillis }
+                    return LoadResult.Page(data = sorted, prevKey = null, nextKey = null)
+                }
+            }
+        }
+
+        override fun getAverageDurationSince(sinceMillis: Long): Flow<Double> {
+            return sessionsFlow.map { sessions ->
+                val filtered = sessions.filter { it.startTimeMillis >= sinceMillis }
+                if (filtered.isNotEmpty()) {
+                    filtered.map { it.durationMillis }.average()
+                } else {
+                    0.0
+                }
+            }
+        }
 
         override suspend fun getSessionById(id: Long): SleepSessionEntity? =
             savedSessions.find { it.id == id }
