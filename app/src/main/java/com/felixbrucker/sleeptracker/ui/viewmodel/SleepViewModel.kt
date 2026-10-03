@@ -23,15 +23,11 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.seconds
 
 @Immutable
@@ -71,26 +67,11 @@ class SleepViewModel(
         Pair(healthConnectManager.isAvailable, false)
     )
 
-    private val _totalSessions = repository.allSessions.map { it.size }
-
-    // Direct SQL calculations for weekly (7 days) and monthly (30 days) averages
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val _weeklyAverage = repository.allSessions.flatMapLatest {
-        val last7DaysCutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(7)
-        repository.getAverageDurationSince(last7DaysCutoff)
-    }
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val _monthlyAverage = repository.allSessions.flatMapLatest {
-        val last30DaysCutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(30)
-        repository.getAverageDurationSince(last30DaysCutoff)
-    }
-
     val uiState: StateFlow<SleepTrackerUiState> = combine(
         repository.preferencesFlow,
-        _totalSessions,
-        _weeklyAverage,
-        _monthlyAverage,
+        repository.totalSessionCount,
+        repository.averageWeeklyDurationMillis,
+        repository.averageMonthlyDurationMillis,
         _liveDuration,
         _healthConnectStatus,
         _statusMessage

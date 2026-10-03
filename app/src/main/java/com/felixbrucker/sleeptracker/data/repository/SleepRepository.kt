@@ -18,16 +18,19 @@ class SleepRepository(
     private val healthConnectManager: HealthConnectDataSource
 ) {
 
-    val allSessions: Flow<List<SleepSessionEntity>> = sleepSessionDao.getAllSessions()
-
     val pagedSessions: Flow<PagingData<SleepSessionEntity>> = Pager(
         config = PagingConfig(pageSize = 20, enablePlaceholders = false)
     ) {
         sleepSessionDao.getAllSessionsPaginated()
     }.flow
 
-    fun getAverageDurationSince(sinceMillis: Long): Flow<Long> =
-        sleepSessionDao.getAverageDurationSince(sinceMillis).map { it.toLong() }
+    val totalSessionCount: Flow<Int> = sleepSessionDao.getSessionCountFlow()
+
+    val averageWeeklyDurationMillis: Flow<Long> =
+        sleepSessionDao.getAverageWeeklyDuration().map { it.toLong() }
+
+    val averageMonthlyDurationMillis: Flow<Long> =
+        sleepSessionDao.getAverageMonthlyDuration().map { it.toLong() }
 
     val preferencesFlow: Flow<SleepPreferences> = preferencesRepository.preferencesFlow
 

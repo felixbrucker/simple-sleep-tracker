@@ -127,8 +127,6 @@ class SleepViewModelTest {
         val savedSessions = mutableListOf<SleepSessionEntity>()
         private val sessionsFlow = MutableStateFlow<List<SleepSessionEntity>>(emptyList())
 
-        override fun getAllSessions(): Flow<List<SleepSessionEntity>> = sessionsFlow
-
         override fun getAllSessionsPaginated(): PagingSource<Int, SleepSessionEntity> {
             return object : PagingSource<Int, SleepSessionEntity>() {
                 override fun getRefreshKey(state: PagingState<Int, SleepSessionEntity>): Int? = null
@@ -139,14 +137,21 @@ class SleepViewModelTest {
             }
         }
 
-        override fun getAverageDurationSince(sinceMillis: Long): Flow<Double> {
+        override fun getSessionCountFlow(): Flow<Int> = sessionsFlow.map { it.size }
+
+        override fun getAverageWeeklyDuration(): Flow<Double> {
             return sessionsFlow.map { sessions ->
-                val filtered = sessions.filter { it.startTimeMillis >= sinceMillis }
-                if (filtered.isNotEmpty()) {
-                    filtered.map { it.durationMillis }.average()
-                } else {
-                    0.0
-                }
+                val last7DaysCutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(7)
+                val filtered = sessions.filter { it.startTimeMillis >= last7DaysCutoff }
+                if (filtered.isNotEmpty()) filtered.map { it.durationMillis }.average() else 0.0
+            }
+        }
+
+        override fun getAverageMonthlyDuration(): Flow<Double> {
+            return sessionsFlow.map { sessions ->
+                val last30DaysCutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(30)
+                val filtered = sessions.filter { it.startTimeMillis >= last30DaysCutoff }
+                if (filtered.isNotEmpty()) filtered.map { it.durationMillis }.average() else 0.0
             }
         }
 
