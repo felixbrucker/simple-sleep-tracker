@@ -1,5 +1,6 @@
 package com.felixbrucker.sleeptracker.data.database.dao
 
+import androidx.paging.PagingSource
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -11,7 +12,16 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface SleepSessionDao {
     @Query("SELECT * FROM sleep_sessions ORDER BY startTimeMillis DESC")
-    fun getAllSessions(): Flow<List<SleepSessionEntity>>
+    fun getAllSessionsPaginated(): PagingSource<Int, SleepSessionEntity>
+
+    @Query("SELECT COUNT(*) FROM sleep_sessions")
+    fun getSessionCountFlow(): Flow<Int>
+
+    @Query("SELECT COALESCE(AVG(durationMillis), 0.0) FROM sleep_sessions WHERE startTimeMillis >= (unixepoch('now', '-7 days') * 1000)")
+    fun getAverageWeeklyDuration(): Flow<Double>
+
+    @Query("SELECT COALESCE(AVG(durationMillis), 0.0) FROM sleep_sessions WHERE startTimeMillis >= (unixepoch('now', '-30 days') * 1000)")
+    fun getAverageMonthlyDuration(): Flow<Double>
 
     @Query("SELECT * FROM sleep_sessions WHERE id = :id")
     suspend fun getSessionById(id: Long): SleepSessionEntity?

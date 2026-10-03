@@ -1,5 +1,8 @@
 package com.felixbrucker.sleeptracker.data.repository
 
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
 import com.felixbrucker.sleeptracker.data.database.dao.SleepSessionDao
 import com.felixbrucker.sleeptracker.data.database.entity.SleepSessionEntity
 import com.felixbrucker.sleeptracker.data.healthconnect.HealthConnectDataSource
@@ -7,6 +10,7 @@ import com.felixbrucker.sleeptracker.data.preferences.SleepPreferences
 import com.felixbrucker.sleeptracker.data.preferences.SleepPreferencesDataSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 
 class SleepRepository(
     private val sleepSessionDao: SleepSessionDao,
@@ -14,7 +18,19 @@ class SleepRepository(
     private val healthConnectManager: HealthConnectDataSource
 ) {
 
-    val allSessions: Flow<List<SleepSessionEntity>> = sleepSessionDao.getAllSessions()
+    val pagedSessions: Flow<PagingData<SleepSessionEntity>> = Pager(
+        config = PagingConfig(pageSize = 20, enablePlaceholders = false)
+    ) {
+        sleepSessionDao.getAllSessionsPaginated()
+    }.flow
+
+    val totalSessionCount: Flow<Int> = sleepSessionDao.getSessionCountFlow()
+
+    val averageWeeklyDurationMillis: Flow<Long> =
+        sleepSessionDao.getAverageWeeklyDuration().map { it.toLong() }
+
+    val averageMonthlyDurationMillis: Flow<Long> =
+        sleepSessionDao.getAverageMonthlyDuration().map { it.toLong() }
 
     val preferencesFlow: Flow<SleepPreferences> = preferencesRepository.preferencesFlow
 

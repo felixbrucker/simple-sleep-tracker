@@ -1,6 +1,8 @@
 package com.felixbrucker.sleeptracker.ui.viewmodel
 
 import android.app.Application
+import androidx.paging.PagingSource
+import androidx.paging.PagingState
 import androidx.test.core.app.ApplicationProvider
 import com.felixbrucker.sleeptracker.data.database.dao.SleepSessionDao
 import com.felixbrucker.sleeptracker.data.database.entity.SleepSessionEntity
@@ -14,7 +16,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -23,6 +29,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
+import java.util.concurrent.TimeUnit
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -86,11 +93,67 @@ class SleepViewModelTest {
         assertEquals(null, state.statusMessage)
     }
 
+    @Test
+    fun uiState_calculatesWeeklyAndMonthlyAverages() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.uiState.collect()
+        }
+
+        val now = System.currentTimeMillis()
+        val session1 = SleepSessionEntity(
+            id = 1L,
+            startTimeMillis = now - TimeUnit.DAYS.toMillis(2),
+            endTimeMillis = now - TimeUnit.DAYS.toMillis(2) + 28_800_000L,
+            durationMillis = 28_800_000L // 8 hours
+        )
+        val session2 = SleepSessionEntity(
+            id = 2L,
+            startTimeMillis = now - TimeUnit.DAYS.toMillis(15),
+            endTimeMillis = now - TimeUnit.DAYS.toMillis(15) + 21_600_000L,
+            durationMillis = 21_600_000L // 6 hours
+        )
+        fakeDao.insertSession(session1)
+        fakeDao.insertSession(session2)
+
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(2, state.totalSleepSessions)
+        assertEquals(28_800_000L, state.averageWeeklyDurationMillis) // only session 1 is in last 7 days
+        assertEquals(25_200_000L, state.averageMonthlyDurationMillis) // average of 8h and 6h (25200000 ms = 7 hours)
+    }
+
     private class FakeSleepSessionDao : SleepSessionDao {
         val savedSessions = mutableListOf<SleepSessionEntity>()
         private val sessionsFlow = MutableStateFlow<List<SleepSessionEntity>>(emptyList())
 
-        override fun getAllSessions(): Flow<List<SleepSessionEntity>> = sessionsFlow
+        override fun getAllSessionsPaginated(): PagingSource<Int, SleepSessionEntity> {
+            return object : PagingSource<Int, SleepSessionEntity>() {
+                override fun getRefreshKey(state: PagingState<Int, SleepSessionEntity>): Int? = null
+                override suspend fun load(params: LoadParams<Int>): LoadResult<Int, SleepSessionEntity> {
+                    val sorted = savedSessions.sortedByDescending { it.startTimeMillis }
+                    return LoadResult.Page(data = sorted, prevKey = null, nextKey = null)
+                }
+            }
+        }
+
+        override fun getSessionCountFlow(): Flow<Int> = sessionsFlow.map { it.size }
+
+        override fun getAverageWeeklyDuration(): Flow<Double> {
+            return sessionsFlow.map { sessions ->
+                val last7DaysCutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(7)
+                val filtered = sessions.filter { it.startTimeMillis >= last7DaysCutoff }
+                if (filtered.isNotEmpty()) filtered.map { it.durationMillis }.average() else 0.0
+            }
+        }
+
+        override fun getAverageMonthlyDuration(): Flow<Double> {
+            return sessionsFlow.map { sessions ->
+                val last30DaysCutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(30)
+                val filtered = sessions.filter { it.startTimeMillis >= last30DaysCutoff }
+                if (filtered.isNotEmpty()) filtered.map { it.durationMillis }.average() else 0.0
+            }
+        }
 
         override suspend fun getSessionById(id: Long): SleepSessionEntity? =
             savedSessions.find { it.id == id }

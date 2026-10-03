@@ -6,6 +6,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
 import com.felixbrucker.sleeptracker.data.database.AppDatabase
 import com.felixbrucker.sleeptracker.data.database.entity.SleepSessionEntity
 import com.felixbrucker.sleeptracker.data.healthconnect.HealthConnectManager
@@ -15,6 +17,7 @@ import com.felixbrucker.sleeptracker.data.repository.SleepRepository
 import com.felixbrucker.sleeptracker.service.AlarmScheduler
 import com.felixbrucker.sleeptracker.service.SleepNotificationManager
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -41,18 +44,10 @@ data class SleepTrackerUiState(
     val autoSyncHealthConnect: Boolean = true,
     val healthConnectAvailable: Boolean = false,
     val healthConnectPermissionsGranted: Boolean = false,
-    val sessions: List<SleepSessionEntity> = emptyList(),
     val totalSleepSessions: Int = 0,
-    val totalSleepDurationMillis: Long = 0L,
-    val averageSleepDurationMillis: Long = 0L,
+    val averageWeeklyDurationMillis: Long = 0L,
+    val averageMonthlyDurationMillis: Long = 0L,
     val statusMessage: String? = null
-)
-
-private data class SessionStats(
-    val sessions: List<SleepSessionEntity> = emptyList(),
-    val totalSessions: Int = 0,
-    val totalDurationMillis: Long = 0L,
-    val averageDurationMillis: Long = 0L
 )
 
 class SleepViewModel(
@@ -63,31 +58,32 @@ class SleepViewModel(
     private val healthConnectManager: HealthConnectManager
 ) : AndroidViewModel(application) {
 
+    val pagedSessions: Flow<PagingData<SleepSessionEntity>> = repository.pagedSessions
+        .cachedIn(viewModelScope)
+
     private val _statusMessage = MutableStateFlow<String?>(null)
     private val _liveDuration = MutableStateFlow(0L)
     private val _healthConnectStatus = MutableStateFlow(
         Pair(healthConnectManager.isAvailable, false)
     )
 
-    private val _sessionStats = repository.allSessions.map { sessions ->
-        val totalSessions = sessions.size
-        val totalDuration = sessions.sumOf { it.durationMillis }
-        val avgDuration = if (totalSessions > 0) totalDuration / totalSessions else 0L
-        SessionStats(
-            sessions = sessions,
-            totalSessions = totalSessions,
-            totalDurationMillis = totalDuration,
-            averageDurationMillis = avgDuration
-        )
-    }
-
     val uiState: StateFlow<SleepTrackerUiState> = combine(
         repository.preferencesFlow,
-        _sessionStats,
+        repository.totalSessionCount,
+        repository.averageWeeklyDurationMillis,
+        repository.averageMonthlyDurationMillis,
         _liveDuration,
         _healthConnectStatus,
         _statusMessage
-    ) { prefs, stats, duration, hcStatus, message ->
+    ) { flows ->
+        val prefs = flows[0] as com.felixbrucker.sleeptracker.data.preferences.SleepPreferences
+        val totalSessions = flows[1] as Int
+        val weeklyAvg = flows[2] as Long
+        val monthlyAvg = flows[3] as Long
+        val duration = flows[4] as Long
+        @Suppress("UNCHECKED_CAST")
+        val hcStatus = flows[5] as Pair<Boolean, Boolean>
+        val message = flows[6] as String?
         val now = System.currentTimeMillis()
         val fallAsleepMillis = prefs.fallAsleepDurationMinutes * 60_000L
         val sleepStartTime = prefs.trackingStartTimeMillis + fallAsleepMillis
@@ -112,10 +108,9 @@ class SleepViewModel(
             autoSyncHealthConnect = prefs.autoSyncHealthConnect,
             healthConnectAvailable = hcStatus.first,
             healthConnectPermissionsGranted = hcStatus.second,
-            sessions = stats.sessions,
-            totalSleepSessions = stats.totalSessions,
-            totalSleepDurationMillis = stats.totalDurationMillis,
-            averageSleepDurationMillis = stats.averageDurationMillis,
+            totalSleepSessions = totalSessions,
+            averageWeeklyDurationMillis = weeklyAvg,
+            averageMonthlyDurationMillis = monthlyAvg,
             statusMessage = message
         )
     }.stateIn(

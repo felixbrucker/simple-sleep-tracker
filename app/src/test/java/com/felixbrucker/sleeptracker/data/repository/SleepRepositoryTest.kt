@@ -1,5 +1,7 @@
 package com.felixbrucker.sleeptracker.data.repository
 
+import androidx.paging.PagingSource
+import androidx.paging.PagingState
 import com.felixbrucker.sleeptracker.data.database.dao.SleepSessionDao
 import com.felixbrucker.sleeptracker.data.database.entity.SleepSessionEntity
 import com.felixbrucker.sleeptracker.data.healthconnect.HealthConnectDataSource
@@ -8,7 +10,9 @@ import com.felixbrucker.sleeptracker.data.preferences.SleepPreferencesDataSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.runTest
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -399,11 +403,52 @@ class SleepRepositoryTest {
         assertEquals("sleep_session_123", recordId)
     }
 
+    @Test
+    fun weeklyAndMonthlyAverages_delegateToDao() = runTest {
+        val now = System.currentTimeMillis()
+        val session1 = SleepSessionEntity(id = 1L, startTimeMillis = now - TimeUnit.DAYS.toMillis(2), endTimeMillis = now - TimeUnit.DAYS.toMillis(2) + 4000L, durationMillis = 4000L)
+        val session2 = SleepSessionEntity(id = 2L, startTimeMillis = now - TimeUnit.DAYS.toMillis(15), endTimeMillis = now - TimeUnit.DAYS.toMillis(15) + 6000L, durationMillis = 6000L)
+        fakeDao.insertSession(session1)
+        fakeDao.insertSession(session2)
+
+        val weekly = repository.averageWeeklyDurationMillis.first()
+        val monthly = repository.averageMonthlyDurationMillis.first()
+
+        assertEquals(4000L, weekly)
+        assertEquals(5000L, monthly)
+    }
+
     private class FakeSleepSessionDao : SleepSessionDao {
         val savedSessions = mutableListOf<SleepSessionEntity>()
         private val sessionsFlow = MutableStateFlow<List<SleepSessionEntity>>(emptyList())
 
-        override fun getAllSessions(): Flow<List<SleepSessionEntity>> = sessionsFlow
+        override fun getAllSessionsPaginated(): PagingSource<Int, SleepSessionEntity> {
+            return object : PagingSource<Int, SleepSessionEntity>() {
+                override fun getRefreshKey(state: PagingState<Int, SleepSessionEntity>): Int? = null
+                override suspend fun load(params: LoadParams<Int>): LoadResult<Int, SleepSessionEntity> {
+                    val sorted = savedSessions.sortedByDescending { it.startTimeMillis }
+                    return LoadResult.Page(data = sorted, prevKey = null, nextKey = null)
+                }
+            }
+        }
+
+        override fun getSessionCountFlow(): Flow<Int> = sessionsFlow.map { it.size }
+
+        override fun getAverageWeeklyDuration(): Flow<Double> {
+            return sessionsFlow.map { sessions ->
+                val last7DaysCutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(7)
+                val filtered = sessions.filter { it.startTimeMillis >= last7DaysCutoff }
+                if (filtered.isNotEmpty()) filtered.map { it.durationMillis }.average() else 0.0
+            }
+        }
+
+        override fun getAverageMonthlyDuration(): Flow<Double> {
+            return sessionsFlow.map { sessions ->
+                val last30DaysCutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(30)
+                val filtered = sessions.filter { it.startTimeMillis >= last30DaysCutoff }
+                if (filtered.isNotEmpty()) filtered.map { it.durationMillis }.average() else 0.0
+            }
+        }
 
         override suspend fun getSessionById(id: Long): SleepSessionEntity? =
             savedSessions.find { it.id == id }
