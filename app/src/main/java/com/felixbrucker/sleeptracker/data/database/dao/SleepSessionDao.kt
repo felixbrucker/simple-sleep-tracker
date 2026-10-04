@@ -17,10 +17,30 @@ interface SleepSessionDao {
     @Query("SELECT COUNT(*) FROM sleep_sessions")
     fun getSessionCountFlow(): Flow<Int>
 
-    @Query("SELECT COALESCE(AVG(durationMillis), 0.0) FROM sleep_sessions WHERE startTimeMillis >= (unixepoch('now', '-7 days') * 1000)")
+    @Query(
+        """
+        SELECT COALESCE(AVG(daily_total), 0.0)
+        FROM (
+            SELECT SUM(durationMillis) AS daily_total
+            FROM sleep_sessions
+            WHERE startTimeMillis >= (unixepoch('now', '-7 days') * 1000)
+            GROUP BY DATE(startTimeMillis / 1000, 'unixepoch', 'localtime')
+        )
+        """
+    )
     fun getAverageWeeklyDuration(): Flow<Double>
 
-    @Query("SELECT COALESCE(AVG(durationMillis), 0.0) FROM sleep_sessions WHERE startTimeMillis >= (unixepoch('now', '-30 days') * 1000)")
+    @Query(
+        """
+        SELECT COALESCE(AVG(daily_total), 0.0)
+        FROM (
+            SELECT SUM(durationMillis) AS daily_total
+            FROM sleep_sessions
+            WHERE startTimeMillis >= (unixepoch('now', '-30 days') * 1000)
+            GROUP BY DATE(startTimeMillis / 1000, 'unixepoch', 'localtime')
+        )
+        """
+    )
     fun getAverageMonthlyDuration(): Flow<Double>
 
     @Query("SELECT * FROM sleep_sessions WHERE id = :id")
