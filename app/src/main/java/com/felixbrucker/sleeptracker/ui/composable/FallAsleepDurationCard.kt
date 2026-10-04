@@ -38,6 +38,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 
+// Hoisted static list to avoid redundant allocations on every composition pass
+private val PRESET_FALL_ASLEEP_MINUTES = listOf(0, 5, 10, 15, 20, 30, 45)
+
 @Composable
 fun FallAsleepDurationCard(
     currentMinutes: Int,
@@ -46,7 +49,6 @@ fun FallAsleepDurationCard(
 ) {
     var showCustomDialog by remember { mutableStateOf(false) }
     var customInputText by remember { mutableStateOf("") }
-    val presets = listOf(0, 5, 10, 15, 20, 30, 45)
 
     Card(
         modifier = modifier
@@ -115,7 +117,7 @@ fun FallAsleepDurationCard(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                presets.forEach { minutes ->
+                PRESET_FALL_ASLEEP_MINUTES.forEach { minutes ->
                     val isSelected = currentMinutes == minutes
                     FilterChip(
                         selected = isSelected,
@@ -128,7 +130,7 @@ fun FallAsleepDurationCard(
                 }
 
                 // Custom option chip
-                val isCustomSelected = currentMinutes !in presets
+                val isCustomSelected = currentMinutes !in PRESET_FALL_ASLEEP_MINUTES
                 FilterChip(
                     selected = isCustomSelected,
                     onClick = {
