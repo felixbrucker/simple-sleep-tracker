@@ -67,12 +67,12 @@ class SleepViewModel(
         Pair(healthConnectManager.isAvailable, false)
     )
 
-    val uiState: StateFlow<SleepTrackerUiState> = combine(
+    // Base UI state combining slow-changing database, preferences, and status flows
+    private val baseUiState: Flow<SleepTrackerUiState> = combine(
         repository.preferencesFlow,
         repository.totalSessionCount,
         repository.averageWeeklyDurationMillis,
         repository.averageMonthlyDurationMillis,
-        _liveDuration,
         _healthConnectStatus,
         _statusMessage
     ) { flows ->
@@ -80,28 +80,14 @@ class SleepViewModel(
         val totalSessions = flows[1] as Int
         val weeklyAvg = flows[2] as Long
         val monthlyAvg = flows[3] as Long
-        val duration = flows[4] as Long
         @Suppress("UNCHECKED_CAST")
-        val hcStatus = flows[5] as Pair<Boolean, Boolean>
-        val message = flows[6] as String?
-        val now = System.currentTimeMillis()
-        val fallAsleepMillis = prefs.fallAsleepDurationMinutes * 60_000L
-        val sleepStartTime = prefs.trackingStartTimeMillis + fallAsleepMillis
-        val isFallingAsleep = prefs.isTrackingActive && prefs.trackingStartTimeMillis > 0L && now < sleepStartTime
-        val remainingMin = if (isFallingAsleep) {
-            val rem = sleepStartTime - now
-            ((rem + 59_999L) / 60_000L).toInt().coerceAtLeast(1)
-        } else {
-            0
-        }
+        val hcStatus = flows[4] as Pair<Boolean, Boolean>
+        val message = flows[5] as String?
 
         SleepTrackerUiState(
             isTrackingActive = prefs.isTrackingActive,
             trackingStartTimeMillis = prefs.trackingStartTimeMillis,
-            currentDurationMillis = if (prefs.isTrackingActive) duration else 0L,
             fallAsleepDurationMinutes = prefs.fallAsleepDurationMinutes,
-            isFallingAsleepPhase = isFallingAsleep,
-            remainingFallAsleepMinutes = remainingMin,
             reminderEnabled = prefs.reminderEnabled,
             reminderHour = prefs.reminderHour,
             reminderMinute = prefs.reminderMinute,
@@ -113,6 +99,31 @@ class SleepViewModel(
             averageMonthlyDurationMillis = monthlyAvg,
             statusMessage = message
         )
+    }
+
+    val uiState: StateFlow<SleepTrackerUiState> = combine(
+        baseUiState,
+        _liveDuration
+    ) { baseState, duration ->
+        if (baseState.isTrackingActive) {
+            val now = System.currentTimeMillis()
+            val fallAsleepMillis = baseState.fallAsleepDurationMinutes * 60_000L
+            val sleepStartTime = baseState.trackingStartTimeMillis + fallAsleepMillis
+            val isFallingAsleep = baseState.trackingStartTimeMillis > 0L && now < sleepStartTime
+            val remainingMin = if (isFallingAsleep) {
+                val rem = sleepStartTime - now
+                ((rem + 59_999L) / 60_000L).toInt().coerceAtLeast(1)
+            } else {
+                0
+            }
+            baseState.copy(
+                currentDurationMillis = duration,
+                isFallingAsleepPhase = isFallingAsleep,
+                remainingFallAsleepMinutes = remainingMin
+            )
+        } else {
+            baseState
+        }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
