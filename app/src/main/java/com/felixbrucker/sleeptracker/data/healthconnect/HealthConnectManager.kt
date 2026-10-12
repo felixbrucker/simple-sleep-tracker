@@ -25,6 +25,9 @@ interface HealthConnectDataSource {
         endTimeMillis: Long,
         notes: String = ""
     ): Boolean
+    suspend fun deleteSleepSession(
+        clientRecordId: String
+    ): Boolean
 }
 
 @Singleton
@@ -117,6 +120,21 @@ class HealthConnectManager @Inject constructor(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error updating sleep session in Health Connect", e)
+            false
+        }
+    }
+
+    override suspend fun deleteSleepSession(clientRecordId: String): Boolean {
+        val client = healthConnectClient ?: return false
+        return try {
+            client.deleteRecords(
+                recordType = SleepSessionRecord::class,
+                recordIdsList = emptyList(),
+                clientRecordIdsList = listOf(clientRecordId)
+            )
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting sleep session from Health Connect", e)
             false
         }
     }
