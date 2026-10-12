@@ -1,41 +1,91 @@
 package com.felixbrucker.sleeptracker.receiver
 
 import android.app.AlarmManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
-import com.felixbrucker.sleeptracker.data.preferences.SleepPreferences
-import com.felixbrucker.sleeptracker.data.preferences.SleepPreferencesDataSource
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import com.felixbrucker.sleeptracker.data.preferences.SleepPreferencesRepository
+import com.felixbrucker.sleeptracker.data.preferences.sleepDataStore
+import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
-@OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [37])
 class BootReceiverTest {
 
-    private val testDispatcher = UnconfinedTestDispatcher()
+    private lateinit var context: Context
+    private lateinit var preferencesRepo: SleepPreferencesRepository
+
+    @Before
+    fun setUp() {
+        context = ApplicationProvider.getApplicationContext()
+        preferencesRepo = SleepPreferencesRepository(context.sleepDataStore)
+        runBlocking {
+            preferencesRepo.setTrackingActive(active = false, startTimeMillis = 0L)
+            preferencesRepo.setReminderConfig(enabled = true, hour = 22, minute = 30)
+        }
+    }
+
+    @After
+    fun tearDown() {
+        runBlocking {
+            preferencesRepo.setTrackingActive(active = false, startTimeMillis = 0L)
+            preferencesRepo.setReminderConfig(enabled = true, hour = 22, minute = 30)
+        }
+    }
+
+    private fun attachPendingResult(receiver: BroadcastReceiver): BroadcastReceiver.PendingResult {
+        val pendingResult = createPendingResult()
+        val field = BroadcastReceiver::class.java.getDeclaredField("mPendingResult")
+        field.isAccessible = true
+        field.set(receiver, pendingResult)
+        return pendingResult
+    }
+
+    private fun createPendingResult(): BroadcastReceiver.PendingResult {
+        val constructors = BroadcastReceiver.PendingResult::class.java.declaredConstructors
+        val ctor = constructors[0]
+        ctor.isAccessible = true
+        val args = arrayOfNulls<Any>(ctor.parameterTypes.size)
+        for (i in ctor.parameterTypes.indices) {
+            val type = ctor.parameterTypes[i]
+            args[i] = when (type) {
+                Int::class.javaPrimitiveType -> 0
+                Boolean::class.javaPrimitiveType -> false
+                else -> null
+            }
+        }
+        return ctor.newInstance(*args) as BroadcastReceiver.PendingResult
+    }
+
+    private fun waitForAsyncWork() {
+        val startTime = System.currentTimeMillis()
+        while (System.currentTimeMillis() - startTime < 1000) {
+            Thread.sleep(20)
+        }
+    }
 
     @Test
     fun onReceive_withTimezoneChangedAndReminderEnabled_schedulesBedtimeReminder() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val fakePrefsRepo = FakeSleepPreferencesDataSource(
-            SleepPreferences(reminderEnabled = true, reminderHour = 22, reminderMinute = 30)
-        )
-        val receiver = BootReceiver(fakePrefsRepo, testDispatcher)
+        runBlocking {
+            preferencesRepo.setReminderConfig(enabled = true, hour = 22, minute = 30)
+        }
+        val receiver = BootReceiver()
+        attachPendingResult(receiver)
         val intent = Intent(Intent.ACTION_TIMEZONE_CHANGED)
 
         receiver.onReceive(context, intent)
+        waitForAsyncWork()
 
         val scheduledAlarms = shadowOf(alarmManager).scheduledAlarms
         assertEquals(1, scheduledAlarms.size)
@@ -43,15 +93,16 @@ class BootReceiverTest {
 
     @Test
     fun onReceive_withTimezoneChangedAndReminderDisabled_doesNotScheduleBedtimeReminder() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val fakePrefsRepo = FakeSleepPreferencesDataSource(
-            SleepPreferences(reminderEnabled = false, reminderHour = 22, reminderMinute = 30)
-        )
-        val receiver = BootReceiver(fakePrefsRepo, testDispatcher)
+        runBlocking {
+            preferencesRepo.setReminderConfig(enabled = false, hour = 22, minute = 30)
+        }
+        val receiver = BootReceiver()
+        attachPendingResult(receiver)
         val intent = Intent(Intent.ACTION_TIMEZONE_CHANGED)
 
         receiver.onReceive(context, intent)
+        waitForAsyncWork()
 
         val scheduledAlarms = shadowOf(alarmManager).scheduledAlarms
         assertTrue(scheduledAlarms.isEmpty())
@@ -59,15 +110,16 @@ class BootReceiverTest {
 
     @Test
     fun onReceive_withTimeChangedAndReminderEnabled_schedulesBedtimeReminder() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val fakePrefsRepo = FakeSleepPreferencesDataSource(
-            SleepPreferences(reminderEnabled = true, reminderHour = 21, reminderMinute = 15)
-        )
-        val receiver = BootReceiver(fakePrefsRepo, testDispatcher)
+        runBlocking {
+            preferencesRepo.setReminderConfig(enabled = true, hour = 21, minute = 15)
+        }
+        val receiver = BootReceiver()
+        attachPendingResult(receiver)
         val intent = Intent(Intent.ACTION_TIME_CHANGED)
 
         receiver.onReceive(context, intent)
+        waitForAsyncWork()
 
         val scheduledAlarms = shadowOf(alarmManager).scheduledAlarms
         assertEquals(1, scheduledAlarms.size)
@@ -75,15 +127,16 @@ class BootReceiverTest {
 
     @Test
     fun onReceive_withBootCompletedAndReminderEnabled_schedulesBedtimeReminder() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val fakePrefsRepo = FakeSleepPreferencesDataSource(
-            SleepPreferences(reminderEnabled = true, reminderHour = 23, reminderMinute = 0)
-        )
-        val receiver = BootReceiver(fakePrefsRepo, testDispatcher)
+        runBlocking {
+            preferencesRepo.setReminderConfig(enabled = true, hour = 23, minute = 0)
+        }
+        val receiver = BootReceiver()
+        attachPendingResult(receiver)
         val intent = Intent(Intent.ACTION_BOOT_COMPLETED)
 
         receiver.onReceive(context, intent)
+        waitForAsyncWork()
 
         val scheduledAlarms = shadowOf(alarmManager).scheduledAlarms
         assertEquals(1, scheduledAlarms.size)
@@ -91,15 +144,16 @@ class BootReceiverTest {
 
     @Test
     fun onReceive_withPackageReplacedAndReminderEnabled_schedulesBedtimeReminder() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val fakePrefsRepo = FakeSleepPreferencesDataSource(
-            SleepPreferences(reminderEnabled = true, reminderHour = 20, reminderMinute = 0)
-        )
-        val receiver = BootReceiver(fakePrefsRepo, testDispatcher)
+        runBlocking {
+            preferencesRepo.setReminderConfig(enabled = true, hour = 20, minute = 0)
+        }
+        val receiver = BootReceiver()
+        attachPendingResult(receiver)
         val intent = Intent(Intent.ACTION_MY_PACKAGE_REPLACED)
 
         receiver.onReceive(context, intent)
+        waitForAsyncWork()
 
         val scheduledAlarms = shadowOf(alarmManager).scheduledAlarms
         assertEquals(1, scheduledAlarms.size)
@@ -107,21 +161,17 @@ class BootReceiverTest {
 
     @Test
     fun onReceive_withTrackingActive_restoresTrackingNotificationAndReminder() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val fakePrefsRepo = FakeSleepPreferencesDataSource(
-            SleepPreferences(
-                isTrackingActive = true,
-                trackingStartTimeMillis = System.currentTimeMillis(),
-                reminderEnabled = true,
-                reminderHour = 22,
-                reminderMinute = 30
-            )
-        )
-        val receiver = BootReceiver(fakePrefsRepo, testDispatcher)
+        runBlocking {
+            preferencesRepo.setReminderConfig(enabled = true, hour = 22, minute = 30)
+            preferencesRepo.setTrackingActive(active = true, startTimeMillis = System.currentTimeMillis())
+        }
+        val receiver = BootReceiver()
+        attachPendingResult(receiver)
         val intent = Intent(Intent.ACTION_BOOT_COMPLETED)
 
         receiver.onReceive(context, intent)
+        waitForAsyncWork()
 
         val scheduledAlarms = shadowOf(alarmManager).scheduledAlarms
         assertEquals(1, scheduledAlarms.size)
@@ -129,12 +179,11 @@ class BootReceiverTest {
 
     @Test
     fun onReceive_withUnhandledAction_doesNotScheduleAlarm() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val fakePrefsRepo = FakeSleepPreferencesDataSource(
-            SleepPreferences(reminderEnabled = true, reminderHour = 22, reminderMinute = 30)
-        )
-        val receiver = BootReceiver(fakePrefsRepo, testDispatcher)
+        runBlocking {
+            preferencesRepo.setReminderConfig(enabled = true, hour = 22, minute = 30)
+        }
+        val receiver = BootReceiver()
         val intent = Intent("com.example.UNHANDLED_ACTION")
 
         receiver.onReceive(context, intent)
@@ -145,46 +194,15 @@ class BootReceiverTest {
 
     @Test
     fun onReceive_withNullIntent_doesNotScheduleAlarm() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val fakePrefsRepo = FakeSleepPreferencesDataSource(
-            SleepPreferences(reminderEnabled = true, reminderHour = 22, reminderMinute = 30)
-        )
-        val receiver = BootReceiver(fakePrefsRepo, testDispatcher)
+        runBlocking {
+            preferencesRepo.setReminderConfig(enabled = true, hour = 22, minute = 30)
+        }
+        val receiver = BootReceiver()
 
         receiver.onReceive(context, null)
 
         val scheduledAlarms = shadowOf(alarmManager).scheduledAlarms
         assertTrue(scheduledAlarms.isEmpty())
-    }
-
-    private class FakeSleepPreferencesDataSource(
-        initialPreferences: SleepPreferences = SleepPreferences()
-    ) : SleepPreferencesDataSource {
-        private val _flow = MutableStateFlow(initialPreferences)
-        override val preferencesFlow: Flow<SleepPreferences> = _flow
-
-        override suspend fun setTrackingActive(active: Boolean, startTimeMillis: Long) {
-            _flow.value = _flow.value.copy(
-                isTrackingActive = active,
-                trackingStartTimeMillis = if (active) startTimeMillis else 0L
-            )
-        }
-
-        override suspend fun setReminderConfig(enabled: Boolean, hour: Int, minute: Int) {
-            _flow.value = _flow.value.copy(
-                reminderEnabled = enabled,
-                reminderHour = hour,
-                reminderMinute = minute
-            )
-        }
-
-        override suspend fun setAutoSyncHealthConnect(enabled: Boolean) {
-            _flow.value = _flow.value.copy(autoSyncHealthConnect = enabled)
-        }
-
-        override suspend fun setFallAsleepDurationMinutes(minutes: Int) {
-            _flow.value = _flow.value.copy(fallAsleepDurationMinutes = minutes)
-        }
     }
 }

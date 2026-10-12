@@ -4,21 +4,16 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import com.felixbrucker.sleeptracker.data.preferences.SleepPreferencesDataSource
 import com.felixbrucker.sleeptracker.data.preferences.SleepPreferencesRepository
 import com.felixbrucker.sleeptracker.data.preferences.sleepDataStore
 import com.felixbrucker.sleeptracker.service.AlarmScheduler
 import com.felixbrucker.sleeptracker.service.SleepNotificationManager
-import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-class BootReceiver(
-    private val preferencesRepository: SleepPreferencesDataSource? = null,
-    private val ioDispatcher: CoroutineContext = Dispatchers.IO
-) : BroadcastReceiver() {
+class BootReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "BootReceiver"
@@ -34,10 +29,10 @@ class BootReceiver(
             Log.d(TAG, "Boot/update/time/timezone broadcast received: $action")
             val pendingResult = goAsync()
 
-            CoroutineScope(ioDispatcher).launch {
+            CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    val prefsRepo = preferencesRepository ?: SleepPreferencesRepository(context.sleepDataStore)
-                    val prefs = prefsRepo.preferencesFlow.first()
+                    val preferencesRepo = SleepPreferencesRepository(context.sleepDataStore)
+                    val prefs = preferencesRepo.preferencesFlow.first()
 
                     if (prefs.reminderEnabled) {
                         val scheduler = AlarmScheduler(context)
@@ -52,7 +47,7 @@ class BootReceiver(
                 } catch (e: Exception) {
                     Log.e(TAG, "Error restoring sleep tracker on boot", e)
                 } finally {
-                    pendingResult?.finish()
+                    pendingResult.finish()
                 }
             }
         }
