@@ -1,6 +1,7 @@
 package com.felixbrucker.sleeptracker.di
 
 import android.content.Context
+import androidx.room.Room
 import com.felixbrucker.sleeptracker.data.database.AppDatabase
 import com.felixbrucker.sleeptracker.data.database.dao.SleepSessionDao
 import dagger.Module
@@ -18,7 +19,11 @@ object DatabaseModule {
     @Singleton
     fun provideAppDatabase(
         @ApplicationContext context: Context
-    ): AppDatabase = AppDatabase.getInstance(context)
+    ): AppDatabase = Room.databaseBuilder(
+        context,
+        AppDatabase::class.java,
+        "sleep_tracker.db"
+    ).build()
 
     @Provides
     fun provideSleepSessionDao(

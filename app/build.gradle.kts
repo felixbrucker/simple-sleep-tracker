@@ -101,9 +101,6 @@ kover {
     }
     filters {
       excludes {
-        packages(
-          "com.felixbrucker.sleeptracker",
-        )
         classes(
           "*.BuildConfig",
           "*_*",

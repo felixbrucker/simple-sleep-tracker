@@ -1,11 +1,9 @@
 package com.felixbrucker.sleeptracker.data.healthconnect
 
-import android.content.Context
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.response.InsertRecordsResponse
-import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -24,19 +22,17 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class HealthConnectManagerTest {
 
-    private lateinit var context: Context
     private val client: HealthConnectClient = mockk(relaxed = true)
     private val permissionController: PermissionController = mockk(relaxed = true)
 
     @Before
     fun setUp() {
-        context = ApplicationProvider.getApplicationContext()
         every { client.permissionController } returns permissionController
     }
 
     @Test
-    fun isAvailable_whenClientProviderProvidesClient_returnsTrue() {
-        val manager = HealthConnectManager(context, clientProvider = { client })
+    fun isAvailable_whenClientProvided_returnsTrue() {
+        val manager = HealthConnectManager(healthConnectClient = client)
 
         val available = manager.isAvailable
 
@@ -44,8 +40,8 @@ class HealthConnectManagerTest {
     }
 
     @Test
-    fun isAvailable_whenClientProviderReturnsNullAndSdkUnavailable_returnsFalse() {
-        val manager = HealthConnectManager(context, clientProvider = { null })
+    fun isAvailable_whenClientNull_returnsFalse() {
+        val manager = HealthConnectManager(healthConnectClient = null)
 
         val available = manager.isAvailable
 
@@ -54,7 +50,7 @@ class HealthConnectManagerTest {
 
     @Test
     fun hasAllPermissions_whenClientNull_returnsFalse() = runTest {
-        val manager = HealthConnectManager(context, clientProvider = { null })
+        val manager = HealthConnectManager(healthConnectClient = null)
 
         val result = manager.hasAllPermissions()
 
@@ -64,7 +60,7 @@ class HealthConnectManagerTest {
     @Test
     fun hasAllPermissions_whenAllRequiredPermissionsGranted_returnsTrue() = runTest {
         coEvery { permissionController.getGrantedPermissions() } returns HealthConnectManager.REQUIRED_PERMISSIONS
-        val manager = HealthConnectManager(context, clientProvider = { client })
+        val manager = HealthConnectManager(healthConnectClient = client)
 
         val result = manager.hasAllPermissions()
 
@@ -74,7 +70,7 @@ class HealthConnectManagerTest {
     @Test
     fun hasAllPermissions_whenPermissionsMissing_returnsFalse() = runTest {
         coEvery { permissionController.getGrantedPermissions() } returns setOf(HealthConnectManager.REQUIRED_PERMISSIONS.first())
-        val manager = HealthConnectManager(context, clientProvider = { client })
+        val manager = HealthConnectManager(healthConnectClient = client)
 
         val result = manager.hasAllPermissions()
 
@@ -84,7 +80,7 @@ class HealthConnectManagerTest {
     @Test
     fun hasAllPermissions_whenExceptionThrown_returnsFalse() = runTest {
         coEvery { permissionController.getGrantedPermissions() } throws RuntimeException("Permission error")
-        val manager = HealthConnectManager(context, clientProvider = { client })
+        val manager = HealthConnectManager(healthConnectClient = client)
 
         val result = manager.hasAllPermissions()
 
@@ -93,7 +89,7 @@ class HealthConnectManagerTest {
 
     @Test
     fun insertSleepSession_whenClientNull_returnsFalse() = runTest {
-        val manager = HealthConnectManager(context, clientProvider = { null })
+        val manager = HealthConnectManager(healthConnectClient = null)
 
         val result = manager.insertSleepSession(
             clientRecordId = "sleep_session_1",
@@ -109,7 +105,7 @@ class HealthConnectManagerTest {
     fun insertSleepSession_whenSuccessful_insertsRecordWithClientRecordIdAndReturnsTrue() = runTest {
         val recordSlot = slot<List<SleepSessionRecord>>()
         coEvery { client.insertRecords(capture(recordSlot)) } returns InsertRecordsResponse(listOf("record_id"))
-        val manager = HealthConnectManager(context, clientProvider = { client })
+        val manager = HealthConnectManager(healthConnectClient = client)
 
         val result = manager.insertSleepSession(
             clientRecordId = "sleep_session_42",
@@ -128,7 +124,7 @@ class HealthConnectManagerTest {
     fun insertSleepSession_whenNotesEmpty_setsNotesToNull() = runTest {
         val recordSlot = slot<List<SleepSessionRecord>>()
         coEvery { client.insertRecords(capture(recordSlot)) } returns InsertRecordsResponse(listOf("record_id"))
-        val manager = HealthConnectManager(context, clientProvider = { client })
+        val manager = HealthConnectManager(healthConnectClient = client)
 
         val result = manager.insertSleepSession(
             clientRecordId = "sleep_session_43",
@@ -145,7 +141,7 @@ class HealthConnectManagerTest {
     @Test
     fun insertSleepSession_whenClientThrowsException_returnsFalse() = runTest {
         coEvery { client.insertRecords(any()) } throws RuntimeException("Insert failed")
-        val manager = HealthConnectManager(context, clientProvider = { client })
+        val manager = HealthConnectManager(healthConnectClient = client)
 
         val result = manager.insertSleepSession(
             clientRecordId = "sleep_session_44",
@@ -159,7 +155,7 @@ class HealthConnectManagerTest {
 
     @Test
     fun updateSleepSession_whenClientNull_returnsFalse() = runTest {
-        val manager = HealthConnectManager(context, clientProvider = { null })
+        val manager = HealthConnectManager(healthConnectClient = null)
 
         val result = manager.updateSleepSession(
             clientRecordId = "sleep_session_1",
@@ -175,7 +171,7 @@ class HealthConnectManagerTest {
     fun updateSleepSession_whenUpdateSucceeds_updatesRecordWithClientRecordIdAndReturnsTrue() = runTest {
         val recordSlot = slot<List<SleepSessionRecord>>()
         coEvery { client.updateRecords(capture(recordSlot)) } returns Unit
-        val manager = HealthConnectManager(context, clientProvider = { client })
+        val manager = HealthConnectManager(healthConnectClient = client)
 
         val result = manager.updateSleepSession(
             clientRecordId = "sleep_session_10",
@@ -194,7 +190,7 @@ class HealthConnectManagerTest {
     fun updateSleepSession_whenUpdateThrowsAndInsertSucceeds_fallsBackToInsertAndReturnsTrue() = runTest {
         coEvery { client.updateRecords(any()) } throws RuntimeException("Update failed")
         coEvery { client.insertRecords(any()) } returns InsertRecordsResponse(listOf("record_id"))
-        val manager = HealthConnectManager(context, clientProvider = { client })
+        val manager = HealthConnectManager(healthConnectClient = client)
 
         val result = manager.updateSleepSession(
             clientRecordId = "sleep_session_11",
@@ -211,7 +207,7 @@ class HealthConnectManagerTest {
     fun updateSleepSession_whenUpdateAndInsertBothThrow_returnsFalse() = runTest {
         coEvery { client.updateRecords(any()) } throws RuntimeException("Update failed")
         coEvery { client.insertRecords(any()) } throws RuntimeException("Insert failed")
-        val manager = HealthConnectManager(context, clientProvider = { client })
+        val manager = HealthConnectManager(healthConnectClient = client)
 
         val result = manager.updateSleepSession(
             clientRecordId = "sleep_session_12",

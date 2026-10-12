@@ -1,12 +1,10 @@
 package com.felixbrucker.sleeptracker.data.healthconnect
 
-import android.content.Context
 import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.metadata.Metadata
-import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.Instant
 import java.time.ZoneId
 import javax.inject.Inject
@@ -31,17 +29,8 @@ interface HealthConnectDataSource {
 
 @Singleton
 class HealthConnectManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    private val healthConnectClient: HealthConnectClient?
 ) : HealthConnectDataSource {
-
-    private var clientProvider: (() -> HealthConnectClient?)? = null
-
-    constructor(
-        context: Context,
-        clientProvider: (() -> HealthConnectClient?)?
-    ) : this(context) {
-        this.clientProvider = clientProvider
-    }
 
     companion object {
         private const val TAG = "HealthConnectManager"
@@ -53,10 +42,7 @@ class HealthConnectManager @Inject constructor(
     }
 
     override val isAvailable: Boolean
-        get() = clientProvider?.invoke() != null || HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
-
-    private val healthConnectClient: HealthConnectClient?
-        get() = clientProvider?.invoke() ?: if (isAvailable) HealthConnectClient.getOrCreate(context) else null
+        get() = healthConnectClient != null
 
     override suspend fun hasAllPermissions(): Boolean {
         val client = healthConnectClient ?: return false

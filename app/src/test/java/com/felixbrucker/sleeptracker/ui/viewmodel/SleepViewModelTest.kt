@@ -23,6 +23,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Before
 import org.junit.Test
 
@@ -40,7 +41,7 @@ class SleepViewModelTest {
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         every { repository.pagedSessions } returns flowOf()
-        every { repository.preferencesFlow } returns flowOf(SleepPreferences())
+        every { repository.preferencesFlow } returns flowOf(SleepPreferences(isTrackingActive = false))
         every { repository.totalSessionCount } returns flowOf(0)
         every { repository.averageWeeklyDurationMillis } returns flowOf(0L)
         every { repository.averageMonthlyDurationMillis } returns flowOf(0L)
