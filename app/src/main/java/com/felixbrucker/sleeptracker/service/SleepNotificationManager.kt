@@ -9,8 +9,14 @@ import androidx.core.app.NotificationCompat
 import com.felixbrucker.sleeptracker.MainActivity
 import com.felixbrucker.sleeptracker.receiver.SleepActionReceiver
 import com.felixbrucker.sleeptracker.util.toFormattedTime
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class SleepNotificationManager(private val context: Context) {
+@Singleton
+class SleepNotificationManager @Inject constructor(
+    @ApplicationContext private val context: Context
+) {
 
     companion object {
         const val NOTIFICATION_ID_SLEEP = 1001

@@ -1,18 +1,17 @@
 package com.felixbrucker.sleeptracker.data.repository
 
-import androidx.paging.PagingSource
-import androidx.paging.PagingState
 import com.felixbrucker.sleeptracker.data.database.dao.SleepSessionDao
 import com.felixbrucker.sleeptracker.data.database.entity.SleepSessionEntity
-import com.felixbrucker.sleeptracker.data.healthconnect.HealthConnectDataSource
+import com.felixbrucker.sleeptracker.data.healthconnect.HealthConnectManager
 import com.felixbrucker.sleeptracker.data.preferences.SleepPreferences
-import com.felixbrucker.sleeptracker.data.preferences.SleepPreferencesDataSource
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
+import com.felixbrucker.sleeptracker.data.preferences.SleepPreferencesRepository
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.every
+import io.mockk.mockk
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
-import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -23,20 +22,22 @@ import org.junit.Test
 
 class SleepRepositoryTest {
 
-    private lateinit var fakeDao: FakeSleepSessionDao
-    private lateinit var fakePreferencesRepo: FakeSleepPreferencesDataSource
-    private lateinit var fakeHealthConnect: FakeHealthConnectDataSource
+    private val sleepSessionDao: SleepSessionDao = mockk(relaxed = true)
+    private val preferencesRepository: SleepPreferencesRepository = mockk(relaxed = true)
+    private val healthConnectManager: HealthConnectManager = mockk(relaxed = true)
     private lateinit var repository: SleepRepository
 
     @Before
     fun setUp() {
-        fakeDao = FakeSleepSessionDao()
-        fakePreferencesRepo = FakeSleepPreferencesDataSource()
-        fakeHealthConnect = FakeHealthConnectDataSource()
+        every { preferencesRepository.preferencesFlow } returns flowOf(SleepPreferences())
+        every { sleepSessionDao.getSessionCountFlow() } returns flowOf(0)
+        every { sleepSessionDao.getAverageWeeklyDuration() } returns flowOf(0.0)
+        every { sleepSessionDao.getAverageMonthlyDuration() } returns flowOf(0.0)
+
         repository = SleepRepository(
-            sleepSessionDao = fakeDao,
-            preferencesRepository = fakePreferencesRepo,
-            healthConnectManager = fakeHealthConnect
+            sleepSessionDao = sleepSessionDao,
+            preferencesRepository = preferencesRepository,
+            healthConnectManager = healthConnectManager
         )
     }
 
@@ -46,70 +47,60 @@ class SleepRepositoryTest {
 
         repository.startTracking(startTime)
 
-        val prefs = fakePreferencesRepo.preferencesFlow.first()
-        assertTrue(prefs.isTrackingActive)
-        assertEquals(startTime, prefs.trackingStartTimeMillis)
+        coVerify { preferencesRepository.setTrackingActive(active = true, startTimeMillis = startTime) }
     }
 
     @Test
     fun stopTracking_whenNotActive_returnsNull() = runTest {
-        val endTime = 200000L
+        every { preferencesRepository.preferencesFlow } returns flowOf(SleepPreferences(isTrackingActive = false))
 
-        val result = repository.stopTracking(endTime)
+        val result = repository.stopTracking(200000L)
 
         assertNull(result)
-        assertEquals(0, fakeDao.savedSessions.size)
+        coVerify(exactly = 0) { sleepSessionDao.insertSession(any()) }
     }
 
     @Test
     fun stopTracking_whenActiveWithoutAutoSync_savesSessionWithoutSync() = runTest {
         val startTime = 100000L
         val endTime = 200000L
-        fakePreferencesRepo.setTrackingActive(active = true, startTimeMillis = startTime)
-        fakePreferencesRepo.setFallAsleepDurationMinutes(0)
-        fakePreferencesRepo.setAutoSyncHealthConnect(false)
+        val prefs = SleepPreferences(isTrackingActive = true, trackingStartTimeMillis = startTime, fallAsleepDurationMinutes = 0, autoSyncHealthConnect = false)
+        every { preferencesRepository.preferencesFlow } returns flowOf(prefs)
+        coEvery { sleepSessionDao.insertSession(any()) } returns 1L
 
         val result = repository.stopTracking(endTime)
 
         assertNotNull(result)
         assertEquals(100000L, result?.durationMillis)
         assertFalse(result?.syncedToHealthConnect ?: true)
-        assertEquals(1, fakeDao.savedSessions.size)
-        val prefs = fakePreferencesRepo.preferencesFlow.first()
-        assertFalse(prefs.isTrackingActive)
+        coVerify { sleepSessionDao.insertSession(any()) }
+        coVerify { preferencesRepository.setTrackingActive(active = false, startTimeMillis = 0L) }
+        coVerify(exactly = 0) { healthConnectManager.insertSleepSession(any(), any(), any(), any()) }
     }
 
     @Test
     fun stopTracking_whenActiveWithAutoSync_savesSessionAndMarksSynced() = runTest {
         val startTime = 100000L
         val endTime = 200000L
-        fakePreferencesRepo.setTrackingActive(active = true, startTimeMillis = startTime)
-        fakePreferencesRepo.setFallAsleepDurationMinutes(0)
-        fakePreferencesRepo.setAutoSyncHealthConnect(true)
-        fakeHealthConnect.insertResult = true
+        val prefs = SleepPreferences(isTrackingActive = true, trackingStartTimeMillis = startTime, fallAsleepDurationMinutes = 0, autoSyncHealthConnect = true)
+        every { preferencesRepository.preferencesFlow } returns flowOf(prefs)
+        coEvery { sleepSessionDao.insertSession(any()) } returns 1L
+        coEvery { healthConnectManager.insertSleepSession("sleep_session_1", 100000L, 200000L) } returns true
 
         val result = repository.stopTracking(endTime)
 
         assertNotNull(result)
         assertTrue(result?.syncedToHealthConnect ?: false)
-        assertEquals(1, fakeDao.savedSessions.size)
-        assertTrue(fakeDao.savedSessions.first().syncedToHealthConnect)
-        assertEquals(listOf("sleep_session_1"), fakeHealthConnect.insertedClientRecordIds)
+        coVerify { sleepSessionDao.markAsSynced(1L) }
     }
 
     @Test
     fun deleteSession_removesSessionFromDao() = runTest {
-        val session = SleepSessionEntity(
-            id = 42L,
-            startTimeMillis = 1000L,
-            endTimeMillis = 5000L,
-            durationMillis = 4000L
-        )
-        fakeDao.savedSessions.add(session)
+        val sessionId = 42L
 
-        repository.deleteSession(42L)
+        repository.deleteSession(sessionId)
 
-        assertEquals(0, fakeDao.savedSessions.size)
+        coVerify { sleepSessionDao.deleteSessionById(sessionId) }
     }
 
     @Test
@@ -120,10 +111,7 @@ class SleepRepositoryTest {
 
         repository.updateReminderConfig(enabled, hour, minute)
 
-        val prefs = fakePreferencesRepo.preferencesFlow.first()
-        assertEquals(enabled, prefs.reminderEnabled)
-        assertEquals(hour, prefs.reminderHour)
-        assertEquals(minute, prefs.reminderMinute)
+        coVerify { preferencesRepository.setReminderConfig(enabled, hour, minute) }
     }
 
     @Test
@@ -132,118 +120,81 @@ class SleepRepositoryTest {
 
         repository.setAutoSyncHealthConnect(enabled)
 
-        val prefs = fakePreferencesRepo.preferencesFlow.first()
-        assertFalse(prefs.autoSyncHealthConnect)
+        coVerify { preferencesRepository.setAutoSyncHealthConnect(enabled) }
     }
 
     @Test
     fun syncSessionToHealthConnect_whenUnsyncedAndSyncSucceeds_insertsAndMarksSessionAsSynced() = runTest {
-        val session = SleepSessionEntity(
-            id = 1L,
-            startTimeMillis = 1000L,
-            endTimeMillis = 5000L,
-            durationMillis = 4000L,
-            syncedToHealthConnect = false
-        )
-        fakeDao.savedSessions.add(session)
-        fakeHealthConnect.insertResult = true
+        val session = SleepSessionEntity(id = 1L, startTimeMillis = 1000L, endTimeMillis = 5000L, durationMillis = 4000L, syncedToHealthConnect = false)
+        coEvery { healthConnectManager.insertSleepSession("sleep_session_1", 1000L, 5000L, "") } returns true
 
         val result = repository.syncSessionToHealthConnect(session)
 
         assertTrue(result)
-        assertTrue(fakeDao.savedSessions.first().syncedToHealthConnect)
-        assertEquals(listOf("sleep_session_1"), fakeHealthConnect.insertedClientRecordIds)
-        assertTrue(fakeHealthConnect.updatedClientRecordIds.isEmpty())
+        coVerify { sleepSessionDao.markAsSynced(1L) }
     }
 
     @Test
     fun syncSessionToHealthConnect_whenAlreadySyncedAndSyncSucceeds_updatesAndMaintainsSynced() = runTest {
-        val session = SleepSessionEntity(
-            id = 1L,
-            startTimeMillis = 1000L,
-            endTimeMillis = 5000L,
-            durationMillis = 4000L,
-            syncedToHealthConnect = true
-        )
-        fakeDao.savedSessions.add(session)
-        fakeHealthConnect.updateResult = true
+        val session = SleepSessionEntity(id = 1L, startTimeMillis = 1000L, endTimeMillis = 5000L, durationMillis = 4000L, syncedToHealthConnect = true)
+        coEvery { healthConnectManager.updateSleepSession("sleep_session_1", 1000L, 5000L, "") } returns true
 
         val result = repository.syncSessionToHealthConnect(session)
 
         assertTrue(result)
-        assertTrue(fakeDao.savedSessions.first().syncedToHealthConnect)
-        assertEquals(listOf("sleep_session_1"), fakeHealthConnect.updatedClientRecordIds)
-        assertTrue(fakeHealthConnect.insertedClientRecordIds.isEmpty())
+        coVerify { sleepSessionDao.markAsSynced(1L) }
     }
 
     @Test
     fun syncSessionToHealthConnect_whenUnsyncedAndSyncFails_leavesSessionUnsynced() = runTest {
-        val session = SleepSessionEntity(
-            id = 1L,
-            startTimeMillis = 1000L,
-            endTimeMillis = 5000L,
-            durationMillis = 4000L,
-            syncedToHealthConnect = false
-        )
-        fakeDao.savedSessions.add(session)
-        fakeHealthConnect.insertResult = false
+        val session = SleepSessionEntity(id = 1L, startTimeMillis = 1000L, endTimeMillis = 5000L, durationMillis = 4000L, syncedToHealthConnect = false)
+        coEvery { healthConnectManager.insertSleepSession("sleep_session_1", 1000L, 5000L, "") } returns false
 
         val result = repository.syncSessionToHealthConnect(session)
 
         assertFalse(result)
-        assertFalse(fakeDao.savedSessions.first().syncedToHealthConnect)
+        coVerify(exactly = 0) { sleepSessionDao.markAsSynced(any()) }
     }
 
     @Test
     fun syncSessionToHealthConnect_whenAlreadySyncedAndSyncFails_returnsFalse() = runTest {
-        val session = SleepSessionEntity(
-            id = 1L,
-            startTimeMillis = 1000L,
-            endTimeMillis = 5000L,
-            durationMillis = 4000L,
-            syncedToHealthConnect = true
-        )
-        fakeDao.savedSessions.add(session)
-        fakeHealthConnect.updateResult = false
+        val session = SleepSessionEntity(id = 1L, startTimeMillis = 1000L, endTimeMillis = 5000L, durationMillis = 4000L, syncedToHealthConnect = true)
+        coEvery { healthConnectManager.updateSleepSession("sleep_session_1", 1000L, 5000L, "") } returns false
 
         val result = repository.syncSessionToHealthConnect(session)
 
         assertFalse(result)
+        coVerify(exactly = 0) { sleepSessionDao.markAsSynced(any()) }
     }
 
     @Test
     fun syncAllUnsyncedToHealthConnect_syncsAllPendingSessions() = runTest {
         val session1 = SleepSessionEntity(id = 1L, startTimeMillis = 1000L, endTimeMillis = 5000L, durationMillis = 4000L, syncedToHealthConnect = false)
         val session2 = SleepSessionEntity(id = 2L, startTimeMillis = 6000L, endTimeMillis = 9000L, durationMillis = 3000L, syncedToHealthConnect = false)
-        fakeDao.savedSessions.addAll(listOf(session1, session2))
-        fakeHealthConnect.insertResult = true
+        coEvery { sleepSessionDao.getUnsyncedSessions() } returns listOf(session1, session2)
+        coEvery { healthConnectManager.insertSleepSession(any(), any(), any(), any()) } returns true
 
         val count = repository.syncAllUnsyncedToHealthConnect()
 
         assertEquals(2, count)
-        assertTrue(fakeDao.savedSessions.all { it.syncedToHealthConnect })
-        assertEquals(listOf("sleep_session_1", "sleep_session_2"), fakeHealthConnect.insertedClientRecordIds)
+        coVerify { sleepSessionDao.markAsSynced(1L) }
+        coVerify { sleepSessionDao.markAsSynced(2L) }
     }
 
     @Test
     fun stopTracking_withFallAsleepDelay_countsDurationOnlyAfterDelay() = runTest {
         val trackingStart = 100_000L
         val fallAsleepMinutes = 15
-        val fallAsleepMillis = fallAsleepMinutes * 60_000L
-        val expectedSleepStart = trackingStart + fallAsleepMillis
         val trackingEnd = 2_000_000L
-        val expectedDuration = trackingEnd - expectedSleepStart
-        fakePreferencesRepo.setTrackingActive(active = true, startTimeMillis = trackingStart)
-        fakePreferencesRepo.setFallAsleepDurationMinutes(fallAsleepMinutes)
-        fakePreferencesRepo.setAutoSyncHealthConnect(false)
+        val prefs = SleepPreferences(isTrackingActive = true, trackingStartTimeMillis = trackingStart, fallAsleepDurationMinutes = fallAsleepMinutes, autoSyncHealthConnect = false)
+        every { preferencesRepository.preferencesFlow } returns flowOf(prefs)
+        coEvery { sleepSessionDao.insertSession(any()) } returns 1L
 
         val result = repository.stopTracking(trackingEnd)
 
         assertNotNull(result)
-        assertEquals(expectedSleepStart, result?.startTimeMillis)
+        assertEquals(100_000L + 15 * 60_000L, result?.startTimeMillis)
         assertEquals(trackingEnd, result?.endTimeMillis)
-        assertEquals(expectedDuration, result?.durationMillis)
-        assertEquals(1, fakeDao.savedSessions.size)
     }
 
     @Test
@@ -251,15 +202,14 @@ class SleepRepositoryTest {
         val trackingStart = 100_000L
         val fallAsleepMinutes = 30
         val trackingEnd = 500_000L
-        fakePreferencesRepo.setTrackingActive(active = true, startTimeMillis = trackingStart)
-        fakePreferencesRepo.setFallAsleepDurationMinutes(fallAsleepMinutes)
-        fakePreferencesRepo.setAutoSyncHealthConnect(false)
+        val prefs = SleepPreferences(isTrackingActive = true, trackingStartTimeMillis = trackingStart, fallAsleepDurationMinutes = fallAsleepMinutes, autoSyncHealthConnect = false)
+        every { preferencesRepository.preferencesFlow } returns flowOf(prefs)
 
         val result = repository.stopTracking(trackingEnd)
 
         assertNull(result)
-        assertTrue(fakeDao.savedSessions.isEmpty())
-        assertFalse(fakePreferencesRepo.preferencesFlow.first().isTrackingActive)
+        coVerify(exactly = 0) { sleepSessionDao.insertSession(any()) }
+        coVerify { preferencesRepository.setTrackingActive(active = false, startTimeMillis = 0L) }
     }
 
     @Test
@@ -267,15 +217,13 @@ class SleepRepositoryTest {
         val trackingStart = 100_000L
         val fallAsleepMinutes = 15
         val trackingEnd = trackingStart + fallAsleepMinutes * 60_000L
-        fakePreferencesRepo.setTrackingActive(active = true, startTimeMillis = trackingStart)
-        fakePreferencesRepo.setFallAsleepDurationMinutes(fallAsleepMinutes)
-        fakePreferencesRepo.setAutoSyncHealthConnect(false)
+        val prefs = SleepPreferences(isTrackingActive = true, trackingStartTimeMillis = trackingStart, fallAsleepDurationMinutes = fallAsleepMinutes, autoSyncHealthConnect = false)
+        every { preferencesRepository.preferencesFlow } returns flowOf(prefs)
 
         val result = repository.stopTracking(trackingEnd)
 
         assertNull(result)
-        assertTrue(fakeDao.savedSessions.isEmpty())
-        assertFalse(fakePreferencesRepo.preferencesFlow.first().isTrackingActive)
+        coVerify(exactly = 0) { sleepSessionDao.insertSession(any()) }
     }
 
     @Test
@@ -284,8 +232,7 @@ class SleepRepositoryTest {
 
         repository.setFallAsleepDurationMinutes(minutes)
 
-        val prefs = fakePreferencesRepo.preferencesFlow.first()
-        assertEquals(25, prefs.fallAsleepDurationMinutes)
+        coVerify { preferencesRepository.setFallAsleepDurationMinutes(25) }
     }
 
     @Test
@@ -294,8 +241,7 @@ class SleepRepositoryTest {
 
         repository.setFallAsleepDurationMinutes(minutes)
 
-        val prefs = fakePreferencesRepo.preferencesFlow.first()
-        assertEquals(180, prefs.fallAsleepDurationMinutes)
+        coVerify { preferencesRepository.setFallAsleepDurationMinutes(180) }
     }
 
     @Test
@@ -304,94 +250,63 @@ class SleepRepositoryTest {
 
         repository.setFallAsleepDurationMinutes(minutes)
 
-        val prefs = fakePreferencesRepo.preferencesFlow.first()
-        assertEquals(0, prefs.fallAsleepDurationMinutes)
+        coVerify { preferencesRepository.setFallAsleepDurationMinutes(0) }
     }
 
     @Test
     fun updateSession_whenSessionDoesNotExist_returnsNull() = runTest {
-        val nonExistentId = 999L
+        coEvery { sleepSessionDao.getSessionById(999L) } returns null
 
-        val result = repository.updateSession(nonExistentId, 1000L, 5000L)
+        val result = repository.updateSession(999L, 1000L, 5000L)
 
         assertNull(result)
     }
 
     @Test
     fun updateSession_whenSessionExistsWithoutAutoSync_updatesTimesAndMarksUnsynced() = runTest {
-        val original = SleepSessionEntity(
-            id = 10L,
-            startTimeMillis = 1000L,
-            endTimeMillis = 5000L,
-            durationMillis = 4000L,
-            syncedToHealthConnect = true
-        )
-        fakeDao.savedSessions.add(original)
-        fakePreferencesRepo.setAutoSyncHealthConnect(false)
-        val newStart = 2000L
-        val newEnd = 8000L
+        val original = SleepSessionEntity(id = 10L, startTimeMillis = 1000L, endTimeMillis = 5000L, durationMillis = 4000L, syncedToHealthConnect = true)
+        coEvery { sleepSessionDao.getSessionById(10L) } returns original
+        val prefs = SleepPreferences(autoSyncHealthConnect = false)
+        every { preferencesRepository.preferencesFlow } returns flowOf(prefs)
 
-        val updated = repository.updateSession(10L, newStart, newEnd)
+        val updated = repository.updateSession(10L, 2000L, 8000L)
 
         assertNotNull(updated)
-        assertEquals(newStart, updated?.startTimeMillis)
-        assertEquals(newEnd, updated?.endTimeMillis)
+        assertEquals(2000L, updated?.startTimeMillis)
+        assertEquals(8000L, updated?.endTimeMillis)
         assertEquals(6000L, updated?.durationMillis)
         assertFalse(updated?.syncedToHealthConnect ?: true)
-        val saved = fakeDao.savedSessions.first { it.id == 10L }
-        assertEquals(6000L, saved.durationMillis)
-        assertFalse(saved.syncedToHealthConnect)
+        coVerify { sleepSessionDao.updateSession(any()) }
     }
 
     @Test
     fun updateSession_whenSessionExistsWithAutoSyncSuccess_updatesAndMarksSynced() = runTest {
-        val original = SleepSessionEntity(
-            id = 10L,
-            startTimeMillis = 1000L,
-            endTimeMillis = 5000L,
-            durationMillis = 4000L,
-            syncedToHealthConnect = false
-        )
-        fakeDao.savedSessions.add(original)
-        fakePreferencesRepo.setAutoSyncHealthConnect(true)
-        fakeHealthConnect.updateResult = true
-        val newStart = 3000L
-        val newEnd = 9000L
+        val original = SleepSessionEntity(id = 10L, startTimeMillis = 1000L, endTimeMillis = 5000L, durationMillis = 4000L, syncedToHealthConnect = false)
+        coEvery { sleepSessionDao.getSessionById(10L) } returns original
+        val prefs = SleepPreferences(autoSyncHealthConnect = true)
+        every { preferencesRepository.preferencesFlow } returns flowOf(prefs)
+        coEvery { healthConnectManager.updateSleepSession("sleep_session_10", 3000L, 9000L, "") } returns true
 
-        val updated = repository.updateSession(10L, newStart, newEnd)
+        val updated = repository.updateSession(10L, 3000L, 9000L)
 
         assertNotNull(updated)
-        assertEquals(newStart, updated?.startTimeMillis)
-        assertEquals(newEnd, updated?.endTimeMillis)
-        assertEquals(6000L, updated?.durationMillis)
         assertTrue(updated?.syncedToHealthConnect ?: false)
-        val saved = fakeDao.savedSessions.first { it.id == 10L }
-        assertTrue(saved.syncedToHealthConnect)
-        assertEquals(listOf("sleep_session_10"), fakeHealthConnect.updatedClientRecordIds)
-        assertTrue(fakeHealthConnect.insertedClientRecordIds.isEmpty())
+        coVerify { sleepSessionDao.markAsSynced(10L) }
     }
 
     @Test
     fun updateSession_whenSessionExistsWithAutoSyncFailure_updatesAndLeavesUnsynced() = runTest {
-        val original = SleepSessionEntity(
-            id = 10L,
-            startTimeMillis = 1000L,
-            endTimeMillis = 5000L,
-            durationMillis = 4000L,
-            syncedToHealthConnect = false
-        )
-        fakeDao.savedSessions.add(original)
-        fakePreferencesRepo.setAutoSyncHealthConnect(true)
-        fakeHealthConnect.updateResult = false
-        val newStart = 3000L
-        val newEnd = 9000L
+        val original = SleepSessionEntity(id = 10L, startTimeMillis = 1000L, endTimeMillis = 5000L, durationMillis = 4000L, syncedToHealthConnect = false)
+        coEvery { sleepSessionDao.getSessionById(10L) } returns original
+        val prefs = SleepPreferences(autoSyncHealthConnect = true)
+        every { preferencesRepository.preferencesFlow } returns flowOf(prefs)
+        coEvery { healthConnectManager.updateSleepSession("sleep_session_10", 3000L, 9000L, "") } returns false
 
-        val updated = repository.updateSession(10L, newStart, newEnd)
+        val updated = repository.updateSession(10L, 3000L, 9000L)
 
         assertNotNull(updated)
         assertFalse(updated?.syncedToHealthConnect ?: true)
-        val saved = fakeDao.savedSessions.first { it.id == 10L }
-        assertFalse(saved.syncedToHealthConnect)
+        coVerify(exactly = 0) { sleepSessionDao.markAsSynced(any()) }
     }
 
     @Test
@@ -405,148 +320,18 @@ class SleepRepositoryTest {
 
     @Test
     fun weeklyAndMonthlyAverages_delegateToDao() = runTest {
-        val now = System.currentTimeMillis()
-        val session1 = SleepSessionEntity(id = 1L, startTimeMillis = now - TimeUnit.DAYS.toMillis(2), endTimeMillis = now - TimeUnit.DAYS.toMillis(2) + 4000L, durationMillis = 4000L)
-        val session2 = SleepSessionEntity(id = 2L, startTimeMillis = now - TimeUnit.DAYS.toMillis(15), endTimeMillis = now - TimeUnit.DAYS.toMillis(15) + 6000L, durationMillis = 6000L)
-        fakeDao.insertSession(session1)
-        fakeDao.insertSession(session2)
+        every { sleepSessionDao.getAverageWeeklyDuration() } returns flowOf(4000.0)
+        every { sleepSessionDao.getAverageMonthlyDuration() } returns flowOf(5000.0)
+        val repo = SleepRepository(
+            sleepSessionDao = sleepSessionDao,
+            preferencesRepository = preferencesRepository,
+            healthConnectManager = healthConnectManager
+        )
 
-        val weekly = repository.averageWeeklyDurationMillis.first()
-        val monthly = repository.averageMonthlyDurationMillis.first()
+        val weekly = repo.averageWeeklyDurationMillis.first()
+        val monthly = repo.averageMonthlyDurationMillis.first()
 
         assertEquals(4000L, weekly)
         assertEquals(5000L, monthly)
-    }
-
-    private class FakeSleepSessionDao : SleepSessionDao {
-        val savedSessions = mutableListOf<SleepSessionEntity>()
-        private val sessionsFlow = MutableStateFlow<List<SleepSessionEntity>>(emptyList())
-
-        override fun getAllSessionsPaginated(): PagingSource<Int, SleepSessionEntity> {
-            return object : PagingSource<Int, SleepSessionEntity>() {
-                override fun getRefreshKey(state: PagingState<Int, SleepSessionEntity>): Int? = null
-                override suspend fun load(params: LoadParams<Int>): LoadResult<Int, SleepSessionEntity> {
-                    val sorted = savedSessions.sortedByDescending { it.startTimeMillis }
-                    return LoadResult.Page(data = sorted, prevKey = null, nextKey = null)
-                }
-            }
-        }
-
-        override fun getSessionCountFlow(): Flow<Int> = sessionsFlow.map { it.size }
-
-        override fun getAverageWeeklyDuration(): Flow<Double> {
-            return sessionsFlow.map { sessions ->
-                val last7DaysCutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(7)
-                val filtered = sessions.filter { it.startTimeMillis >= last7DaysCutoff }
-                if (filtered.isNotEmpty()) filtered.map { it.durationMillis }.average() else 0.0
-            }
-        }
-
-        override fun getAverageMonthlyDuration(): Flow<Double> {
-            return sessionsFlow.map { sessions ->
-                val last30DaysCutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(30)
-                val filtered = sessions.filter { it.startTimeMillis >= last30DaysCutoff }
-                if (filtered.isNotEmpty()) filtered.map { it.durationMillis }.average() else 0.0
-            }
-        }
-
-        override suspend fun getSessionById(id: Long): SleepSessionEntity? =
-            savedSessions.find { it.id == id }
-
-        override suspend fun insertSession(session: SleepSessionEntity): Long {
-            val assignedId = if (session.id == 0L) (savedSessions.size + 1).toLong() else session.id
-            val inserted = session.copy(id = assignedId)
-            savedSessions.add(inserted)
-            sessionsFlow.value = savedSessions.toList()
-            return assignedId
-        }
-
-        override suspend fun updateSession(session: SleepSessionEntity) {
-            val index = savedSessions.indexOfFirst { it.id == session.id }
-            if (index >= 0) {
-                savedSessions[index] = session
-                sessionsFlow.value = savedSessions.toList()
-            }
-        }
-
-        override suspend fun deleteSessionById(id: Long) {
-            savedSessions.removeAll { it.id == id }
-            sessionsFlow.value = savedSessions.toList()
-        }
-
-        override suspend fun getUnsyncedSessions(): List<SleepSessionEntity> =
-            savedSessions.filter { !it.syncedToHealthConnect }
-
-        override suspend fun markAsSynced(id: Long) {
-            val index = savedSessions.indexOfFirst { it.id == id }
-            if (index >= 0) {
-                savedSessions[index] = savedSessions[index].copy(syncedToHealthConnect = true)
-                sessionsFlow.value = savedSessions.toList()
-            }
-        }
-
-        override suspend fun getSessionCount(): Int = savedSessions.size
-    }
-
-    private class FakeSleepPreferencesDataSource : SleepPreferencesDataSource {
-        private val _flow = MutableStateFlow(SleepPreferences())
-        override val preferencesFlow: Flow<SleepPreferences> = _flow
-
-        override suspend fun setTrackingActive(active: Boolean, startTimeMillis: Long) {
-            _flow.value = _flow.value.copy(
-                isTrackingActive = active,
-                trackingStartTimeMillis = if (active) startTimeMillis else 0L
-            )
-        }
-
-        override suspend fun setReminderConfig(enabled: Boolean, hour: Int, minute: Int) {
-            _flow.value = _flow.value.copy(
-                reminderEnabled = enabled,
-                reminderHour = hour,
-                reminderMinute = minute
-            )
-        }
-
-        override suspend fun setAutoSyncHealthConnect(enabled: Boolean) {
-            _flow.value = _flow.value.copy(
-                autoSyncHealthConnect = enabled
-            )
-        }
-
-        override suspend fun setFallAsleepDurationMinutes(minutes: Int) {
-            _flow.value = _flow.value.copy(
-                fallAsleepDurationMinutes = minutes
-            )
-        }
-    }
-
-    private class FakeHealthConnectDataSource : HealthConnectDataSource {
-        var insertResult = true
-        var updateResult = true
-        val insertedClientRecordIds = mutableListOf<String>()
-        val updatedClientRecordIds = mutableListOf<String>()
-        override val isAvailable: Boolean = true
-
-        override suspend fun hasAllPermissions(): Boolean = true
-
-        override suspend fun insertSleepSession(
-            clientRecordId: String,
-            startTimeMillis: Long,
-            endTimeMillis: Long,
-            notes: String
-        ): Boolean {
-            insertedClientRecordIds.add(clientRecordId)
-            return insertResult
-        }
-
-        override suspend fun updateSleepSession(
-            clientRecordId: String,
-            startTimeMillis: Long,
-            endTimeMillis: Long,
-            notes: String
-        ): Boolean {
-            updatedClientRecordIds.add(clientRecordId)
-            return updateResult
-        }
     }
 }

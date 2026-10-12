@@ -14,7 +14,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.felixbrucker.sleeptracker.ui.screens.SleepTrackerScreen
 import com.felixbrucker.sleeptracker.ui.viewmodel.SleepViewModel
 import com.felixbrucker.sleeptracker.ui.theme.SleepTrackerTheme
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -23,9 +25,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             SleepTrackerTheme {
-                val viewModel: SleepViewModel = viewModel(
-                    factory = SleepViewModel.Factory(application)
-                )
+                val viewModel: SleepViewModel = viewModel()
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
                 Surface(

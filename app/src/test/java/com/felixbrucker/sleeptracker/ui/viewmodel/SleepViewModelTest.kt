@@ -1,25 +1,21 @@
 package com.felixbrucker.sleeptracker.ui.viewmodel
 
-import android.app.Application
-import androidx.paging.PagingSource
-import androidx.paging.PagingState
-import androidx.test.core.app.ApplicationProvider
-import com.felixbrucker.sleeptracker.data.database.dao.SleepSessionDao
 import com.felixbrucker.sleeptracker.data.database.entity.SleepSessionEntity
 import com.felixbrucker.sleeptracker.data.healthconnect.HealthConnectManager
 import com.felixbrucker.sleeptracker.data.preferences.SleepPreferences
-import com.felixbrucker.sleeptracker.data.preferences.SleepPreferencesDataSource
 import com.felixbrucker.sleeptracker.data.repository.SleepRepository
 import com.felixbrucker.sleeptracker.service.AlarmScheduler
 import com.felixbrucker.sleeptracker.service.SleepNotificationManager
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -29,42 +25,29 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
-import java.util.concurrent.TimeUnit
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
 
 @OptIn(ExperimentalCoroutinesApi::class)
-@RunWith(RobolectricTestRunner::class)
-@Config(sdk = [37])
 class SleepViewModelTest {
 
-    private val testDispatcher = StandardTestDispatcher()
-    private lateinit var application: Application
-    private lateinit var fakeDao: FakeSleepSessionDao
-    private lateinit var fakePreferencesRepo: FakeSleepPreferencesDataSource
-    private lateinit var healthConnectManager: HealthConnectManager
-    private lateinit var repository: SleepRepository
-    private lateinit var notificationManager: SleepNotificationManager
-    private lateinit var alarmScheduler: AlarmScheduler
+    private val testDispatcher = UnconfinedTestDispatcher()
+    private val repository: SleepRepository = mockk(relaxed = true)
+    private val notificationManager: SleepNotificationManager = mockk(relaxed = true)
+    private val alarmScheduler: AlarmScheduler = mockk(relaxed = true)
+    private val healthConnectManager: HealthConnectManager = mockk(relaxed = true)
     private lateinit var viewModel: SleepViewModel
 
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        application = ApplicationProvider.getApplicationContext()
-        fakeDao = FakeSleepSessionDao()
-        fakePreferencesRepo = FakeSleepPreferencesDataSource()
-        healthConnectManager = HealthConnectManager(application)
-        repository = SleepRepository(
-            sleepSessionDao = fakeDao,
-            preferencesRepository = fakePreferencesRepo,
-            healthConnectManager = healthConnectManager
-        )
-        notificationManager = SleepNotificationManager(application)
-        alarmScheduler = AlarmScheduler(application)
+        every { repository.pagedSessions } returns flowOf()
+        every { repository.preferencesFlow } returns flowOf(SleepPreferences())
+        every { repository.totalSessionCount } returns flowOf(0)
+        every { repository.averageWeeklyDurationMillis } returns flowOf(0L)
+        every { repository.averageMonthlyDurationMillis } returns flowOf(0L)
+        every { healthConnectManager.isAvailable } returns true
+        coEvery { healthConnectManager.hasAllPermissions() } returns true
+
         viewModel = SleepViewModel(
-            application = application,
             repository = repository,
             notificationManager = notificationManager,
             alarmScheduler = alarmScheduler,
@@ -79,6 +62,8 @@ class SleepViewModelTest {
 
     @Test
     fun uiState_whenTrackingInactive_hasZeroLiveDuration() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect() }
+
         val state = viewModel.uiState.value
 
         assertFalse(state.isTrackingActive)
@@ -87,6 +72,8 @@ class SleepViewModelTest {
 
     @Test
     fun clearStatusMessage_clearsMessageInState() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect() }
+
         viewModel.clearStatusMessage()
 
         val state = viewModel.uiState.value
@@ -95,133 +82,165 @@ class SleepViewModelTest {
 
     @Test
     fun uiState_calculatesWeeklyAndMonthlyAverages() = runTest {
-        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-            viewModel.uiState.collect()
-        }
-
-        val now = System.currentTimeMillis()
-        val session1 = SleepSessionEntity(
-            id = 1L,
-            startTimeMillis = now - TimeUnit.DAYS.toMillis(2),
-            endTimeMillis = now - TimeUnit.DAYS.toMillis(2) + 28_800_000L,
-            durationMillis = 28_800_000L // 8 hours
+        every { repository.totalSessionCount } returns flowOf(2)
+        every { repository.averageWeeklyDurationMillis } returns flowOf(28_800_000L)
+        every { repository.averageMonthlyDurationMillis } returns flowOf(25_200_000L)
+        val vm = SleepViewModel(
+            repository = repository,
+            notificationManager = notificationManager,
+            alarmScheduler = alarmScheduler,
+            healthConnectManager = healthConnectManager
         )
-        val session2 = SleepSessionEntity(
-            id = 2L,
-            startTimeMillis = now - TimeUnit.DAYS.toMillis(15),
-            endTimeMillis = now - TimeUnit.DAYS.toMillis(15) + 21_600_000L,
-            durationMillis = 21_600_000L // 6 hours
-        )
-        fakeDao.insertSession(session1)
-        fakeDao.insertSession(session2)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect() }
 
-        testScheduler.advanceUntilIdle()
-
-        val state = viewModel.uiState.value
+        val state = vm.uiState.value
         assertEquals(2, state.totalSleepSessions)
-        assertEquals(28_800_000L, state.averageWeeklyDurationMillis) // only session 1 is in last 7 days
-        assertEquals(25_200_000L, state.averageMonthlyDurationMillis) // average of 8h and 6h (25200000 ms = 7 hours)
+        assertEquals(28_800_000L, state.averageWeeklyDurationMillis)
+        assertEquals(25_200_000L, state.averageMonthlyDurationMillis)
     }
 
-    private class FakeSleepSessionDao : SleepSessionDao {
-        val savedSessions = mutableListOf<SleepSessionEntity>()
-        private val sessionsFlow = MutableStateFlow<List<SleepSessionEntity>>(emptyList())
+    @Test
+    fun startTracking_startsTrackingAndShowsNotification() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect() }
+        coEvery { repository.startTracking(any()) } returns Unit
 
-        override fun getAllSessionsPaginated(): PagingSource<Int, SleepSessionEntity> {
-            return object : PagingSource<Int, SleepSessionEntity>() {
-                override fun getRefreshKey(state: PagingState<Int, SleepSessionEntity>): Int? = null
-                override suspend fun load(params: LoadParams<Int>): LoadResult<Int, SleepSessionEntity> {
-                    val sorted = savedSessions.sortedByDescending { it.startTimeMillis }
-                    return LoadResult.Page(data = sorted, prevKey = null, nextKey = null)
-                }
-            }
-        }
+        viewModel.startTracking()
 
-        override fun getSessionCountFlow(): Flow<Int> = sessionsFlow.map { it.size }
-
-        override fun getAverageWeeklyDuration(): Flow<Double> {
-            return sessionsFlow.map { sessions ->
-                val last7DaysCutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(7)
-                val filtered = sessions.filter { it.startTimeMillis >= last7DaysCutoff }
-                if (filtered.isNotEmpty()) filtered.map { it.durationMillis }.average() else 0.0
-            }
-        }
-
-        override fun getAverageMonthlyDuration(): Flow<Double> {
-            return sessionsFlow.map { sessions ->
-                val last30DaysCutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(30)
-                val filtered = sessions.filter { it.startTimeMillis >= last30DaysCutoff }
-                if (filtered.isNotEmpty()) filtered.map { it.durationMillis }.average() else 0.0
-            }
-        }
-
-        override suspend fun getSessionById(id: Long): SleepSessionEntity? =
-            savedSessions.find { it.id == id }
-
-        override suspend fun insertSession(session: SleepSessionEntity): Long {
-            val assignedId = if (session.id == 0L) (savedSessions.size + 1).toLong() else session.id
-            val inserted = session.copy(id = assignedId)
-            savedSessions.add(inserted)
-            sessionsFlow.value = savedSessions.toList()
-            return assignedId
-        }
-
-        override suspend fun updateSession(session: SleepSessionEntity) {
-            val index = savedSessions.indexOfFirst { it.id == session.id }
-            if (index >= 0) {
-                savedSessions[index] = session
-                sessionsFlow.value = savedSessions.toList()
-            }
-        }
-
-        override suspend fun deleteSessionById(id: Long) {
-            savedSessions.removeAll { it.id == id }
-            sessionsFlow.value = savedSessions.toList()
-        }
-
-        override suspend fun getUnsyncedSessions(): List<SleepSessionEntity> =
-            savedSessions.filter { !it.syncedToHealthConnect }
-
-        override suspend fun markAsSynced(id: Long) {
-            val index = savedSessions.indexOfFirst { it.id == id }
-            if (index >= 0) {
-                savedSessions[index] = savedSessions[index].copy(syncedToHealthConnect = true)
-                sessionsFlow.value = savedSessions.toList()
-            }
-        }
-
-        override suspend fun getSessionCount(): Int = savedSessions.size
+        coVerify { repository.startTracking(any()) }
+        verify { notificationManager.showTrackingActiveNotification(any()) }
+        assertEquals("Sleep tracking started", viewModel.uiState.value.statusMessage)
     }
 
-    private class FakeSleepPreferencesDataSource : SleepPreferencesDataSource {
-        private val _flow = MutableStateFlow(SleepPreferences())
-        override val preferencesFlow: Flow<SleepPreferences> = _flow
+    @Test
+    fun stopTracking_whenSessionSynced_updatesStatusMessage() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect() }
+        val session = SleepSessionEntity(id = 1L, startTimeMillis = 1000L, endTimeMillis = 5000L, durationMillis = 4000L, syncedToHealthConnect = true)
+        coEvery { repository.stopTracking(any()) } returns session
 
-        override suspend fun setTrackingActive(active: Boolean, startTimeMillis: Long) {
-            _flow.value = _flow.value.copy(
-                isTrackingActive = active,
-                trackingStartTimeMillis = if (active) startTimeMillis else 0L
-            )
-        }
+        viewModel.stopTracking()
 
-        override suspend fun setReminderConfig(enabled: Boolean, hour: Int, minute: Int) {
-            _flow.value = _flow.value.copy(
-                reminderEnabled = enabled,
-                reminderHour = hour,
-                reminderMinute = minute
-            )
-        }
+        coVerify { repository.stopTracking(any()) }
+        verify { notificationManager.dismissSleepNotification() }
+        assertEquals("Sleep tracked & synced to Health Connect!", viewModel.uiState.value.statusMessage)
+    }
 
-        override suspend fun setAutoSyncHealthConnect(enabled: Boolean) {
-            _flow.value = _flow.value.copy(
-                autoSyncHealthConnect = enabled
-            )
-        }
+    @Test
+    fun stopTracking_whenSessionNotSynced_updatesStatusMessage() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect() }
+        val session = SleepSessionEntity(id = 1L, startTimeMillis = 1000L, endTimeMillis = 5000L, durationMillis = 4000L, syncedToHealthConnect = false)
+        coEvery { repository.stopTracking(any()) } returns session
 
-        override suspend fun setFallAsleepDurationMinutes(minutes: Int) {
-            _flow.value = _flow.value.copy(
-                fallAsleepDurationMinutes = minutes
-            )
-        }
+        viewModel.stopTracking()
+
+        assertEquals("Sleep tracked successfully!", viewModel.uiState.value.statusMessage)
+    }
+
+    @Test
+    fun stopTracking_whenSessionNull_updatesStatusMessage() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect() }
+        coEvery { repository.stopTracking(any()) } returns null
+
+        viewModel.stopTracking()
+
+        assertEquals("Tracking stopped before falling asleep (no sleep recorded)", viewModel.uiState.value.statusMessage)
+    }
+
+    @Test
+    fun updateReminderConfig_whenEnabled_schedulesReminder() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect() }
+        coEvery { repository.updateReminderConfig(true, 22, 30) } returns Unit
+
+        viewModel.updateReminderConfig(enabled = true, hour = 22, minute = 30)
+
+        coVerify { repository.updateReminderConfig(true, 22, 30) }
+        verify { alarmScheduler.scheduleBedtimeReminder(22, 30) }
+        assertEquals("Bedtime reminder updated", viewModel.uiState.value.statusMessage)
+    }
+
+    @Test
+    fun updateReminderConfig_whenDisabled_cancelsReminder() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect() }
+        coEvery { repository.updateReminderConfig(false, 22, 30) } returns Unit
+
+        viewModel.updateReminderConfig(enabled = false, hour = 22, minute = 30)
+
+        coVerify { repository.updateReminderConfig(false, 22, 30) }
+        verify { alarmScheduler.cancelBedtimeReminder() }
+        assertEquals("Bedtime reminder disabled", viewModel.uiState.value.statusMessage)
+    }
+
+    @Test
+    fun setAutoSyncHealthConnect_whenEnabled_updatesPreference() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect() }
+        coEvery { repository.setAutoSyncHealthConnect(true) } returns Unit
+
+        viewModel.setAutoSyncHealthConnect(enabled = true)
+
+        coVerify { repository.setAutoSyncHealthConnect(true) }
+        assertEquals("Auto-sync to Health Connect enabled", viewModel.uiState.value.statusMessage)
+    }
+
+    @Test
+    fun sendTestReminder_triggersNotification() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect() }
+
+        viewModel.sendTestReminder()
+
+        verify { notificationManager.showSleepReminderNotification() }
+        assertEquals("Reminder notification triggered", viewModel.uiState.value.statusMessage)
+    }
+
+    @Test
+    fun syncSession_whenSuccessful_updatesStatusMessage() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect() }
+        val session = SleepSessionEntity(id = 1L, startTimeMillis = 1000L, endTimeMillis = 5000L, durationMillis = 4000L)
+        coEvery { repository.syncSessionToHealthConnect(session) } returns true
+
+        viewModel.syncSession(session)
+
+        assertEquals("Session synced to Health Connect", viewModel.uiState.value.statusMessage)
+    }
+
+    @Test
+    fun syncAllUnsynced_whenCountGreaterThanZero_updatesStatusMessage() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect() }
+        coEvery { repository.syncAllUnsyncedToHealthConnect() } returns 2
+
+        viewModel.syncAllUnsynced()
+
+        assertEquals("Synced 2 session(s) to Health Connect", viewModel.uiState.value.statusMessage)
+    }
+
+    @Test
+    fun deleteSession_deletesInRepository() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect() }
+        coEvery { repository.deleteSession(1L) } returns Unit
+
+        viewModel.deleteSession(1L)
+
+        coVerify { repository.deleteSession(1L) }
+        assertEquals("Session deleted", viewModel.uiState.value.statusMessage)
+    }
+
+    @Test
+    fun setFallAsleepDurationMinutes_updatesRepository() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect() }
+        coEvery { repository.setFallAsleepDurationMinutes(15) } returns Unit
+
+        viewModel.setFallAsleepDurationMinutes(15)
+
+        coVerify { repository.setFallAsleepDurationMinutes(15) }
+        assertEquals("Time to fall asleep set to 15 min", viewModel.uiState.value.statusMessage)
+    }
+
+    @Test
+    fun updateSession_whenSuccessful_updatesStatusMessage() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect() }
+        val session = SleepSessionEntity(id = 1L, startTimeMillis = 1000L, endTimeMillis = 5000L, durationMillis = 4000L)
+        coEvery { repository.updateSession(1L, 1000L, 5000L) } returns session
+
+        viewModel.updateSession(1L, 1000L, 5000L)
+
+        assertEquals("Sleep record updated", viewModel.uiState.value.statusMessage)
     }
 }

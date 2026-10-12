@@ -6,8 +6,11 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.metadata.Metadata
+import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.Instant
 import java.time.ZoneId
+import javax.inject.Inject
+import javax.inject.Singleton
 
 interface HealthConnectDataSource {
     val isAvailable: Boolean
@@ -26,10 +29,19 @@ interface HealthConnectDataSource {
     ): Boolean
 }
 
-class HealthConnectManager(
-    private val context: Context,
-    private val clientProvider: (() -> HealthConnectClient?)? = null
+@Singleton
+class HealthConnectManager @Inject constructor(
+    @ApplicationContext private val context: Context
 ) : HealthConnectDataSource {
+
+    private var clientProvider: (() -> HealthConnectClient?)? = null
+
+    constructor(
+        context: Context,
+        clientProvider: (() -> HealthConnectClient?)?
+    ) : this(context) {
+        this.clientProvider = clientProvider
+    }
 
     companion object {
         private const val TAG = "HealthConnectManager"
