@@ -121,6 +121,10 @@ class SleepRepository @Inject constructor(
     }
 
     suspend fun deleteSession(id: Long) {
+        val existing = sleepSessionDao.getSessionById(id)
+        if (existing != null && existing.syncedToHealthConnect) {
+            healthConnectManager.deleteSleepSession(clientRecordId(id))
+        }
         sleepSessionDao.deleteSessionById(id)
     }
 

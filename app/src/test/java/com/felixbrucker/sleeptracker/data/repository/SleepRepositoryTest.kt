@@ -95,11 +95,38 @@ class SleepRepositoryTest {
     }
 
     @Test
-    fun deleteSession_removesSessionFromDao() = runTest {
+    fun deleteSession_whenSessionIsSynced_deletesFromHealthConnectAndDao() = runTest {
         val sessionId = 42L
+        val session = SleepSessionEntity(id = sessionId, startTimeMillis = 1000L, endTimeMillis = 5000L, durationMillis = 4000L, syncedToHealthConnect = true)
+        coEvery { sleepSessionDao.getSessionById(sessionId) } returns session
+        coEvery { healthConnectManager.deleteSleepSession("sleep_session_42") } returns true
 
         repository.deleteSession(sessionId)
 
+        coVerify { healthConnectManager.deleteSleepSession("sleep_session_42") }
+        coVerify { sleepSessionDao.deleteSessionById(sessionId) }
+    }
+
+    @Test
+    fun deleteSession_whenSessionIsNotSynced_deletesOnlyFromDao() = runTest {
+        val sessionId = 43L
+        val session = SleepSessionEntity(id = sessionId, startTimeMillis = 1000L, endTimeMillis = 5000L, durationMillis = 4000L, syncedToHealthConnect = false)
+        coEvery { sleepSessionDao.getSessionById(sessionId) } returns session
+
+        repository.deleteSession(sessionId)
+
+        coVerify(exactly = 0) { healthConnectManager.deleteSleepSession(any()) }
+        coVerify { sleepSessionDao.deleteSessionById(sessionId) }
+    }
+
+    @Test
+    fun deleteSession_whenSessionNotFound_deletesFromDaoWithoutHealthConnectCall() = runTest {
+        val sessionId = 44L
+        coEvery { sleepSessionDao.getSessionById(sessionId) } returns null
+
+        repository.deleteSession(sessionId)
+
+        coVerify(exactly = 0) { healthConnectManager.deleteSleepSession(any()) }
         coVerify { sleepSessionDao.deleteSessionById(sessionId) }
     }
 

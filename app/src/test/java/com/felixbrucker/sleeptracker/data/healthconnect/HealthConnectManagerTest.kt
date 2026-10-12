@@ -218,4 +218,52 @@ class HealthConnectManagerTest {
 
         assertFalse(result)
     }
+
+    @Test
+    fun deleteSleepSession_whenClientNull_returnsFalse() = runTest {
+        val manager = HealthConnectManager(healthConnectClient = null)
+
+        val result = manager.deleteSleepSession(clientRecordId = "sleep_session_1")
+
+        assertFalse(result)
+    }
+
+    @Test
+    fun deleteSleepSession_whenSuccessful_callsDeleteRecordsAndReturnsTrue() = runTest {
+        coEvery {
+            client.deleteRecords(
+                recordType = SleepSessionRecord::class,
+                recordIdsList = emptyList(),
+                clientRecordIdsList = listOf("sleep_session_42")
+            )
+        } returns Unit
+        val manager = HealthConnectManager(healthConnectClient = client)
+
+        val result = manager.deleteSleepSession(clientRecordId = "sleep_session_42")
+
+        assertTrue(result)
+        coVerify {
+            client.deleteRecords(
+                recordType = SleepSessionRecord::class,
+                recordIdsList = emptyList(),
+                clientRecordIdsList = listOf("sleep_session_42")
+            )
+        }
+    }
+
+    @Test
+    fun deleteSleepSession_whenClientThrowsException_returnsFalse() = runTest {
+        coEvery {
+            client.deleteRecords(
+                recordType = SleepSessionRecord::class,
+                recordIdsList = any(),
+                clientRecordIdsList = any()
+            )
+        } throws RuntimeException("Delete failed")
+        val manager = HealthConnectManager(healthConnectClient = client)
+
+        val result = manager.deleteSleepSession(clientRecordId = "sleep_session_43")
+
+        assertFalse(result)
+    }
 }
