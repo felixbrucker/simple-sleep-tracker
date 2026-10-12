@@ -1,6 +1,6 @@
 package com.felixbrucker.sleeptracker
 
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.paging.PagingData
 import com.felixbrucker.sleeptracker.ui.screens.SleepTrackerScreen

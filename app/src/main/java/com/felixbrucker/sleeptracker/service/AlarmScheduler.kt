@@ -8,8 +8,14 @@ import android.os.Build
 import android.util.Log
 import com.felixbrucker.sleeptracker.receiver.SleepReminderReceiver
 import com.felixbrucker.sleeptracker.util.calculateNextAlarmTime
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class AlarmScheduler(private val context: Context) {
+@Singleton
+class AlarmScheduler @Inject constructor(
+    @ApplicationContext private val context: Context
+) {
 
     companion object {
         private const val TAG = "AlarmScheduler"

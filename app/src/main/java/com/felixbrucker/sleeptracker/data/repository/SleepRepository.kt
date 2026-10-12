@@ -6,16 +6,21 @@ import androidx.paging.PagingData
 import com.felixbrucker.sleeptracker.data.database.dao.SleepSessionDao
 import com.felixbrucker.sleeptracker.data.database.entity.SleepSessionEntity
 import com.felixbrucker.sleeptracker.data.healthconnect.HealthConnectDataSource
+import com.felixbrucker.sleeptracker.data.healthconnect.HealthConnectManager
 import com.felixbrucker.sleeptracker.data.preferences.SleepPreferences
 import com.felixbrucker.sleeptracker.data.preferences.SleepPreferencesDataSource
+import com.felixbrucker.sleeptracker.data.preferences.SleepPreferencesRepository
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-class SleepRepository(
+@Singleton
+class SleepRepository @Inject constructor(
     private val sleepSessionDao: SleepSessionDao,
-    private val preferencesRepository: SleepPreferencesDataSource,
-    private val healthConnectManager: HealthConnectDataSource
+    private val preferencesRepository: SleepPreferencesRepository,
+    private val healthConnectManager: HealthConnectManager
 ) {
 
     val pagedSessions: Flow<PagingData<SleepSessionEntity>> = Pager(

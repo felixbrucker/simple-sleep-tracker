@@ -4,18 +4,18 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import com.felixbrucker.sleeptracker.data.database.AppDatabase
-import com.felixbrucker.sleeptracker.data.healthconnect.HealthConnectManager
 import com.felixbrucker.sleeptracker.data.preferences.SleepPreferencesRepository
-import com.felixbrucker.sleeptracker.data.preferences.sleepDataStore
 import com.felixbrucker.sleeptracker.data.repository.SleepRepository
 import com.felixbrucker.sleeptracker.service.AlarmScheduler
 import com.felixbrucker.sleeptracker.service.SleepNotificationManager
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
+@AndroidEntryPoint
 class SleepActionReceiver : BroadcastReceiver() {
 
     companion object {
@@ -25,19 +25,21 @@ class SleepActionReceiver : BroadcastReceiver() {
         const val ACTION_DISMISS = "com.felixbrucker.sleeptracker.ACTION_DISMISS"
     }
 
+    @Inject
+    lateinit var repository: SleepRepository
+
+    @Inject
+    lateinit var preferencesRepo: SleepPreferencesRepository
+
+    @Inject
+    lateinit var alarmScheduler: AlarmScheduler
+
+    @Inject
+    lateinit var notificationManager: SleepNotificationManager
+
     override fun onReceive(context: Context, intent: Intent?) {
         val action = intent?.action ?: return
         Log.d(TAG, "Received action: $action")
-
-        val notificationManager = SleepNotificationManager(context)
-        val database = AppDatabase.getInstance(context)
-        val preferencesRepo = SleepPreferencesRepository(context.sleepDataStore)
-        val healthConnectManager = HealthConnectManager(context)
-        val repository = SleepRepository(
-            sleepSessionDao = database.sleepSessionDao(),
-            preferencesRepository = preferencesRepo,
-            healthConnectManager = healthConnectManager
-        )
 
         when (action) {
             ACTION_START_TRACKING -> {
@@ -67,8 +69,7 @@ class SleepActionReceiver : BroadcastReceiver() {
                         // Reschedule next bedtime reminder
                         val prefs = preferencesRepo.preferencesFlow.first()
                         if (prefs.reminderEnabled) {
-                            val scheduler = AlarmScheduler(context)
-                            scheduler.scheduleBedtimeReminder(prefs.reminderHour, prefs.reminderMinute)
+                            alarmScheduler.scheduleBedtimeReminder(prefs.reminderHour, prefs.reminderMinute)
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to stop tracking", e)

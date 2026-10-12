@@ -4,6 +4,7 @@ plugins {
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.roborazzi)
   alias(libs.plugins.kover)
+  alias(libs.plugins.hilt.android)
 }
 
 android {
@@ -108,6 +109,8 @@ kover {
           "com.felixbrucker.sleeptracker.ui.screens.*",
           "com.felixbrucker.sleeptracker.ui.theme.*",
           "com.felixbrucker.sleeptracker.MainActivity*",
+          "*Hilt*",
+          "*Factory*",
         )
       }
     }
@@ -134,9 +137,11 @@ dependencies {
   implementation(libs.androidx.room.paging)
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
+  implementation(libs.hilt.android)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   testImplementation(libs.androidx.paging.testing)
+  testImplementation(libs.mockk)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)
@@ -150,4 +155,5 @@ dependencies {
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)
+  "ksp"(libs.hilt.compiler)
 }

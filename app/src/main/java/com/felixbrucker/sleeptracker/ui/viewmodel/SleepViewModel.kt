@@ -1,18 +1,14 @@
 package com.felixbrucker.sleeptracker.ui.viewmodel
 
-import android.app.Application
 import androidx.compose.runtime.Immutable
-import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
-import com.felixbrucker.sleeptracker.data.database.AppDatabase
 import com.felixbrucker.sleeptracker.data.database.entity.SleepSessionEntity
 import com.felixbrucker.sleeptracker.data.healthconnect.HealthConnectManager
-import com.felixbrucker.sleeptracker.data.preferences.SleepPreferencesRepository
-import com.felixbrucker.sleeptracker.data.preferences.sleepDataStore
 import com.felixbrucker.sleeptracker.data.repository.SleepRepository
 import com.felixbrucker.sleeptracker.service.AlarmScheduler
 import com.felixbrucker.sleeptracker.service.SleepNotificationManager
@@ -50,13 +46,13 @@ data class SleepTrackerUiState(
     val statusMessage: String? = null
 )
 
-class SleepViewModel(
-    application: Application,
+@HiltViewModel
+class SleepViewModel @Inject constructor(
     private val repository: SleepRepository,
     private val notificationManager: SleepNotificationManager,
     private val alarmScheduler: AlarmScheduler,
     private val healthConnectManager: HealthConnectManager
-) : AndroidViewModel(application) {
+) : ViewModel() {
 
     val pagedSessions: Flow<PagingData<SleepSessionEntity>> = repository.pagedSessions
         .cachedIn(viewModelScope)
@@ -280,29 +276,5 @@ class SleepViewModel(
 
     fun clearStatusMessage() {
         _statusMessage.value = null
-    }
-
-    class Factory(private val application: Application) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            val database = AppDatabase.getInstance(application)
-            val preferencesRepo = SleepPreferencesRepository(application.sleepDataStore)
-            val healthConnectManager = HealthConnectManager(application)
-            val repository = SleepRepository(
-                sleepSessionDao = database.sleepSessionDao(),
-                preferencesRepository = preferencesRepo,
-                healthConnectManager = healthConnectManager
-            )
-            val notificationManager = SleepNotificationManager(application)
-            val alarmScheduler = AlarmScheduler(application)
-
-            return SleepViewModel(
-                application = application,
-                repository = repository,
-                notificationManager = notificationManager,
-                alarmScheduler = alarmScheduler,
-                healthConnectManager = healthConnectManager
-            ) as T
-        }
     }
 }

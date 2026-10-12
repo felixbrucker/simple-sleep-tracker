@@ -8,6 +8,9 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -31,9 +34,13 @@ interface SleepPreferencesDataSource {
     suspend fun setFallAsleepDurationMinutes(minutes: Int)
 }
 
+@Singleton
 class SleepPreferencesRepository(
     private val dataStore: DataStore<Preferences>
 ) : SleepPreferencesDataSource {
+
+    @Inject
+    constructor(@ApplicationContext context: Context) : this(context.sleepDataStore)
 
     companion object {
         private val KEY_IS_TRACKING = booleanPreferencesKey("is_tracking_active")
