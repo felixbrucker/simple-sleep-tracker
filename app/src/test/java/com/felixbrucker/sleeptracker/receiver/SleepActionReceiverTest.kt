@@ -2,6 +2,7 @@ package com.felixbrucker.sleeptracker.receiver
 
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import androidx.test.core.app.ApplicationProvider
 import com.felixbrucker.sleeptracker.data.preferences.SleepPreferencesRepository
 import com.felixbrucker.sleeptracker.data.preferences.sleepDataStore
@@ -15,18 +16,19 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLooper
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [37])
 class SleepActionReceiverTest {
 
-    private lateinit var context: Context
+    private lateinit var appContext: Context
     private lateinit var preferencesRepo: SleepPreferencesRepository
 
     @Before
     fun setUp() {
-        context = ApplicationProvider.getApplicationContext()
-        preferencesRepo = SleepPreferencesRepository(context.sleepDataStore)
+        appContext = ApplicationProvider.getApplicationContext()
+        preferencesRepo = SleepPreferencesRepository(appContext.sleepDataStore)
         runBlocking {
             preferencesRepo.setTrackingActive(active = false, startTimeMillis = 0L)
         }
@@ -40,18 +42,21 @@ class SleepActionReceiverTest {
     }
 
     private fun waitForAsyncWork() {
+        ShadowLooper.idleMainLooper()
         val startTime = System.currentTimeMillis()
         while (System.currentTimeMillis() - startTime < 1000) {
             Thread.sleep(20)
         }
+        ShadowLooper.idleMainLooper()
     }
 
     @Test
     fun onReceive_withStartTrackingAction_startsTracking() {
         val receiver = SleepActionReceiver()
         val intent = Intent(SleepActionReceiver.ACTION_START_TRACKING)
+        appContext.registerReceiver(receiver, IntentFilter(SleepActionReceiver.ACTION_START_TRACKING), Context.RECEIVER_EXPORTED)
 
-        receiver.onReceive(context, intent)
+        appContext.sendBroadcast(intent)
         waitForAsyncWork()
 
         val isTracking = runBlocking { preferencesRepo.preferencesFlow.first().isTrackingActive }
@@ -65,8 +70,9 @@ class SleepActionReceiverTest {
         }
         val receiver = SleepActionReceiver()
         val intent = Intent(SleepActionReceiver.ACTION_STOP_TRACKING)
+        appContext.registerReceiver(receiver, IntentFilter(SleepActionReceiver.ACTION_STOP_TRACKING), Context.RECEIVER_EXPORTED)
 
-        receiver.onReceive(context, intent)
+        appContext.sendBroadcast(intent)
         waitForAsyncWork()
 
         val isTracking = runBlocking { preferencesRepo.preferencesFlow.first().isTrackingActive }
@@ -77,14 +83,15 @@ class SleepActionReceiverTest {
     fun onReceive_withDismissAction_doesNotThrow() {
         val receiver = SleepActionReceiver()
         val intent = Intent(SleepActionReceiver.ACTION_DISMISS)
+        appContext.registerReceiver(receiver, IntentFilter(SleepActionReceiver.ACTION_DISMISS), Context.RECEIVER_EXPORTED)
 
-        receiver.onReceive(context, intent)
+        appContext.sendBroadcast(intent)
     }
 
     @Test
     fun onReceive_withNullIntent_doesNotThrow() {
         val receiver = SleepActionReceiver()
 
-        receiver.onReceive(context, null)
+        receiver.onReceive(appContext, null)
     }
 }
