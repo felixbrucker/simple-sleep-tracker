@@ -109,8 +109,6 @@ kover {
           "com.felixbrucker.sleeptracker.ui.screens.*",
           "com.felixbrucker.sleeptracker.ui.theme.*",
           "com.felixbrucker.sleeptracker.MainActivity*",
-          "com.felixbrucker.sleeptracker.MainApplication*",
-          "com.felixbrucker.sleeptracker.di.*",
           "*Hilt*",
           "*Factory*",
         )
