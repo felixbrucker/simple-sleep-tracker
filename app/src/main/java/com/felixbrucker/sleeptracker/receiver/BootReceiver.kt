@@ -21,8 +21,12 @@ class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent?) {
         val action = intent?.action
-        if (action == Intent.ACTION_BOOT_COMPLETED || action == Intent.ACTION_MY_PACKAGE_REPLACED) {
-            Log.d(TAG, "Device booted or app updated, restoring state")
+        if (action == Intent.ACTION_BOOT_COMPLETED ||
+            action == Intent.ACTION_MY_PACKAGE_REPLACED ||
+            action == Intent.ACTION_TIMEZONE_CHANGED ||
+            action == Intent.ACTION_TIME_CHANGED
+        ) {
+            Log.d(TAG, "Boot/update/time/timezone broadcast received: $action")
             val pendingResult = goAsync()
 
             CoroutineScope(Dispatchers.IO).launch {
