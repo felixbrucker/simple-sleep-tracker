@@ -42,7 +42,7 @@ class SleepReminderReceiver : BroadcastReceiver() {
             } catch (e: Exception) {
                 Log.e(TAG, "Error handling sleep reminder alarm", e)
             } finally {
-                pendingResult.finish()
+                pendingResult?.finish()
             }
         }
     }

@@ -51,7 +51,7 @@ class SleepActionReceiver : BroadcastReceiver() {
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to start tracking", e)
                     } finally {
-                        pendingResult.finish()
+                        pendingResult?.finish()
                     }
                 }
             }
@@ -73,7 +73,7 @@ class SleepActionReceiver : BroadcastReceiver() {
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to stop tracking", e)
                     } finally {
-                        pendingResult.finish()
+                        pendingResult?.finish()
                     }
                 }
             }

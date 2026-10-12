@@ -4,16 +4,21 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.felixbrucker.sleeptracker.data.preferences.SleepPreferencesDataSource
 import com.felixbrucker.sleeptracker.data.preferences.SleepPreferencesRepository
 import com.felixbrucker.sleeptracker.data.preferences.sleepDataStore
 import com.felixbrucker.sleeptracker.service.AlarmScheduler
 import com.felixbrucker.sleeptracker.service.SleepNotificationManager
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-class BootReceiver : BroadcastReceiver() {
+class BootReceiver(
+    private val preferencesRepository: SleepPreferencesDataSource? = null,
+    private val ioDispatcher: CoroutineContext = Dispatchers.IO
+) : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "BootReceiver"
@@ -21,14 +26,18 @@ class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent?) {
         val action = intent?.action
-        if (action == Intent.ACTION_BOOT_COMPLETED || action == Intent.ACTION_MY_PACKAGE_REPLACED) {
-            Log.d(TAG, "Device booted or app updated, restoring state")
+        if (action == Intent.ACTION_BOOT_COMPLETED ||
+            action == Intent.ACTION_MY_PACKAGE_REPLACED ||
+            action == Intent.ACTION_TIMEZONE_CHANGED ||
+            action == Intent.ACTION_TIME_CHANGED
+        ) {
+            Log.d(TAG, "Boot/update/time/timezone broadcast received: $action")
             val pendingResult = goAsync()
 
-            CoroutineScope(Dispatchers.IO).launch {
+            CoroutineScope(ioDispatcher).launch {
                 try {
-                    val preferencesRepo = SleepPreferencesRepository(context.sleepDataStore)
-                    val prefs = preferencesRepo.preferencesFlow.first()
+                    val prefsRepo = preferencesRepository ?: SleepPreferencesRepository(context.sleepDataStore)
+                    val prefs = prefsRepo.preferencesFlow.first()
 
                     if (prefs.reminderEnabled) {
                         val scheduler = AlarmScheduler(context)
@@ -43,7 +52,7 @@ class BootReceiver : BroadcastReceiver() {
                 } catch (e: Exception) {
                     Log.e(TAG, "Error restoring sleep tracker on boot", e)
                 } finally {
-                    pendingResult.finish()
+                    pendingResult?.finish()
                 }
             }
         }
