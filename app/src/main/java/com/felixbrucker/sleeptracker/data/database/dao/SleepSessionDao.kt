@@ -23,7 +23,7 @@ interface SleepSessionDao {
         FROM (
             SELECT SUM(durationMillis) AS daily_total
             FROM sleep_sessions
-            WHERE startTimeMillis >= (unixepoch('now', '-7 days') * 1000)
+            WHERE startTimeMillis >= (strftime('%s', 'now', '-7 days') * 1000)
             GROUP BY DATE(startTimeMillis / 1000, 'unixepoch', 'localtime')
         )
         """
@@ -36,7 +36,7 @@ interface SleepSessionDao {
         FROM (
             SELECT SUM(durationMillis) AS daily_total
             FROM sleep_sessions
-            WHERE startTimeMillis >= (unixepoch('now', '-30 days') * 1000)
+            WHERE startTimeMillis >= (strftime('%s', 'now', '-30 days') * 1000)
             GROUP BY DATE(startTimeMillis / 1000, 'unixepoch', 'localtime')
         )
         """
