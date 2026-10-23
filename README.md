@@ -18,10 +18,6 @@ A modern, low-power Android application for tracking sleep duration, built with 
 - **Database**: [Room](https://developer.android.com/training/data-storage/room)
 - **Preferences**: [Jetpack DataStore](https://developer.android.com/topic/libraries/architecture/datastore)
 - **Health Data**: [Health Connect Client](https://developer.android.com/health-connect)
-- **Testing**:
-  - Unit tests with [Robolectric](http://robolectric.org/)
-  - Screenshot testing with [Roborazzi](https://github.com/takahirom/roborazzi)
-  - Coverage reporting with [Kover](https://github.com/Kotlin/kotlinx-kover)
 
 ## 📥 Installation & Updates
 
@@ -43,7 +39,7 @@ You can find the latest APKs in the [Releases](https://github.com/felixbrucker/s
 ### Prerequisites
 - Android Studio Ladybug (or newer)
 - Android SDK 37
-- JDK 25
+- Java 11+
 
 ### Build Commands
 ```bash
@@ -52,9 +48,6 @@ You can find the latest APKs in the [Releases](https://github.com/felixbrucker/s
 
 # Build debug APK
 ./gradlew assembleDebug
-
-# Generate coverage report
-./gradlew koverHtmlReport
 ```
 
 ## 📄 License
