@@ -100,20 +100,19 @@ class SleepViewModel @Inject constructor(
     val uiState: StateFlow<SleepTrackerUiState> = combine(
         baseUiState,
         _liveDuration
-    ) { baseState, duration ->
+    ) { baseState, elapsedMillis ->
         if (baseState.isTrackingActive) {
-            val now = System.currentTimeMillis()
             val fallAsleepMillis = baseState.fallAsleepDurationMinutes * 60_000L
-            val sleepStartTime = baseState.trackingStartTimeMillis + fallAsleepMillis
-            val isFallingAsleep = baseState.trackingStartTimeMillis > 0L && now < sleepStartTime
+            val isFallingAsleep = elapsedMillis < fallAsleepMillis
             val remainingMin = if (isFallingAsleep) {
-                val rem = sleepStartTime - now
+                val rem = fallAsleepMillis - elapsedMillis
                 ((rem + 59_999L) / 60_000L).toInt().coerceAtLeast(1)
             } else {
                 0
             }
+            val currentDuration = if (isFallingAsleep) 0L else elapsedMillis - fallAsleepMillis
             baseState.copy(
-                currentDurationMillis = duration,
+                currentDurationMillis = currentDuration,
                 isFallingAsleepPhase = isFallingAsleep,
                 remainingFallAsleepMinutes = remainingMin
             )
@@ -137,14 +136,13 @@ class SleepViewModel @Inject constructor(
     private fun startLiveDurationTimer() {
         viewModelScope.launch {
             repository.preferencesFlow
-                .map { Triple(it.isTrackingActive, it.trackingStartTimeMillis, it.fallAsleepDurationMinutes) }
+                .map { Pair(it.isTrackingActive, it.trackingStartTimeMillis) }
                 .distinctUntilChanged()
-                .collectLatest { (isTrackingActive, startTimeMillis, fallAsleepMinutes) ->
+                .collectLatest { (isTrackingActive, startTimeMillis) ->
                     if (isTrackingActive && startTimeMillis > 0L) {
                         while (isActive) {
                             val now = System.currentTimeMillis()
-                            val sleepStartTime = startTimeMillis + (fallAsleepMinutes * 60_000L)
-                            _liveDuration.value = if (now >= sleepStartTime) (now - sleepStartTime).coerceAtLeast(0L) else 0L
+                            _liveDuration.value = (now - startTimeMillis).coerceAtLeast(0L)
                             delay(1.seconds)
                         }
                     } else {
