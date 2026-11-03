@@ -123,6 +123,10 @@ fun SleepTrackerScreen(
     var sessionToDelete by remember { mutableStateOf<SleepSessionEntity?>(null) }
     var sessionToEdit by remember { mutableStateOf<SleepSessionEntity?>(null) }
 
+    val onEditSessionLambda = remember { { session: SleepSessionEntity -> sessionToEdit = session } }
+    val onSyncSessionLambda = remember(onSyncSession) { { session: SleepSessionEntity -> onSyncSession(session) } }
+    val onDeleteSessionLambda = remember { { session: SleepSessionEntity -> sessionToDelete = session } }
+
     // Health Connect Permission Launcher
     val healthConnectPermissionLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract()
@@ -299,15 +303,11 @@ fun SleepTrackerScreen(
                 ) { index ->
                     val session = lazyPagingItems[index]
                     if (session != null) {
-                        val onEditSession = remember(session) { { sessionToEdit = session } }
-                        val onSyncSessionItem = remember(session, onSyncSession) { { onSyncSession(session) } }
-                        val onDeleteSessionItem = remember(session) { { sessionToDelete = session } }
-
                         SleepSessionItem(
                             session = session,
-                            onEdit = onEditSession,
-                            onSync = onSyncSessionItem,
-                            onDelete = onDeleteSessionItem
+                            onEdit = onEditSessionLambda,
+                            onSync = onSyncSessionLambda,
+                            onDelete = onDeleteSessionLambda
                         )
                     }
                 }
@@ -933,12 +933,13 @@ private fun StatBox(
     }
 }
 
+// Hoisting item action callbacks with entity parameter allows items to skip recompositions when state updates
 @Composable
 private fun SleepSessionItem(
     session: SleepSessionEntity,
-    onEdit: () -> Unit,
-    onSync: () -> Unit,
-    onDelete: () -> Unit,
+    onEdit: (SleepSessionEntity) -> Unit,
+    onSync: (SleepSessionEntity) -> Unit,
+    onDelete: (SleepSessionEntity) -> Unit,
     modifier: Modifier = Modifier
 ) {
     OutlinedCard(
@@ -1029,7 +1030,7 @@ private fun SleepSessionItem(
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
-                    onClick = onEdit,
+                    onClick = { onEdit(session) },
                     modifier = Modifier.testTag("edit_session_button_${session.id}")
                 ) {
                     Icon(
@@ -1041,7 +1042,7 @@ private fun SleepSessionItem(
 
                 if (!session.syncedToHealthConnect) {
                     IconButton(
-                        onClick = onSync,
+                        onClick = { onSync(session) },
                         modifier = Modifier.testTag("sync_session_button_${session.id}")
                     ) {
                         Icon(
@@ -1053,7 +1054,7 @@ private fun SleepSessionItem(
                 }
 
                 IconButton(
-                    onClick = onDelete,
+                    onClick = { onDelete(session) },
                     modifier = Modifier.testTag("delete_session_button_${session.id}")
                 ) {
                     Icon(
