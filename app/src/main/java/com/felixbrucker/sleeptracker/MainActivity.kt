@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     SleepTrackerScreen(
                         uiState = uiState,
-                    pagedSessions = viewModel.pagedSessions,
+                        pagedSessions = viewModel.pagedSessions,
                         onStartTracking = viewModel::startTracking,
                         onStopTracking = viewModel::stopTracking,
                         onUpdateReminder = viewModel::updateReminderConfig,
